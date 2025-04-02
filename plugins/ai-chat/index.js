@@ -50,12 +50,12 @@ exports.defaultConfig = (() => {
     models: {
       deepseek: {
         name: "DeepSeek",
-        apiKey: "sk-3e623af9b3194461afdd0ff57466087f",
+        apiKey: "sk-xxxxxxxxxxxxxxxx",
         enabled: true
       },
       siliconflow: {
         name: "SiliconFlow",
-        apiKey: "sk-ajuxtzuuywbmneogntibetghldiwguyrynvrrxpdvgcdmqfq",
+        apiKey: "sk-xxxxxxxxxxxxxxxxxxxx",
         enabled: true,
         model: "deepseek-ai/DeepSeek-V3"
       },

@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "time": "07:00",
+  "defaultCity": "北京",
+  "templates": {
+    "morning": "早上好，今天是 {{date}}，{{holiday}}。\n\n今日天气：\n{{weather}}\n\n{{forecast}}\n\nAI生活建议：\n{{advice}}"
+  }
+} 

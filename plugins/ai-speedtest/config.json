@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "testInterval": 3600000,
+  "testPrompt": "用一句话简明扼要地回答：今天天气好吗？",
+  "testTimeout": 15000,
+  "autoSwitch": true,
+  "skipDisabled": true,
+  "excludeModels": [],
+  "currentFastest": null,
+  "lastTestTime": 0,
+  "testResults": {}
+} 

@@ -1,0 +1,178 @@
+{
+  "enabled": true,
+  "commandPrefix": "api",
+  "apis": {
+    "heisi": {
+      "name": "黑丝图片",
+      "url": "https://v2.xxapi.cn/api/heisi",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回黑丝图片",
+      "params": {}
+    },
+    "baisi": {
+      "name": "白丝图片",
+      "url": "https://v2.xxapi.cn/api/baisi",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回白丝图片",
+      "params": {}
+    },
+    "avatar": {
+      "name": "随机头像",
+      "url": "https://v2.xxapi.cn/api/head",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回头像图片",
+      "params": {}
+    },
+    "acg-pc": {
+      "name": "二次元图片",
+      "url": "https://v2.xxapi.cn/api/randomAcgPic",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回电脑端二次元图片 ",
+      "params": {
+        "type":"pc"
+      }
+    },
+    "acg-wap": {
+      "name": "二次元图片",
+      "url": "https://v2.xxapi.cn/api/randomAcgPic",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回手机端二次元图片",
+      "params": {
+        "type":"wap"
+      }
+    },
+    "4k-acg": {
+      "name": "4K图片",
+      "url": "https://v2.xxapi.cn/api/random4kPic",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回4K二次元图片",
+      "params": {
+        "type":"acg"
+      }
+    },
+    "4k-wallpaper": {
+      "name": "4K图片",
+      "url": "https://v2.xxapi.cn/api/random4kPic",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回4K二次元图片",
+      "params": {
+        "type":"wallpaper"
+      }
+    },
+    "wallpaper": {
+      "name": "壁纸图片",
+      "url": "https://v2.xxapi.cn/api/wallpaper",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回壁纸图片",
+      "params": {}
+    },
+    "girl": {
+      "name": "小姐姐图片",
+      "url": "https://v2.xxapi.cn/api/meinvpic",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回小姐姐图片",
+      "params": {
+      
+      },
+      "dataPath": "data.url"
+    },
+    "girlvideo": {
+      "name": "小姐姐视频",
+      "url": "https://v2.xxapi.cn/api/meinv",
+      "method": "GET",
+      "type": "video",
+      "enabled": true,
+      "description": "随机返回小姐姐视频",
+      "params": {}
+    },
+      "meitui": {
+      "name": "美腿",
+      "url": "https://api.dwo.cc/api/meizi",
+      "method": "GET",
+      "type": "image",
+      "enabled": true,
+      "description": "随机返回美腿图片",
+      "params": {
+        "type": "json"
+      },
+      "dataPath": "数据.pic"
+    },
+    "douyinhot": {
+      "name": "抖音热点",
+      "url": "https://v2.xxapi.cn/api/douyinhot",
+      "method": "GET",
+      "type": "text",
+      "enabled": true,
+      "description": "获取抖音热搜榜",
+      "params": {},
+      "dataPath": "data"
+    },
+    "weibohot": {
+      "name": "微博热搜",
+      "url": "https://v2.xxapi.cn/api/weibohot",
+      "method": "GET",
+      "type": "text",
+      "enabled": true,
+      "description": "获取微博热搜榜",
+      "params": {},
+      "dataPath": "data"
+    },
+    "baiduhot": {
+      "name": "百度热搜",
+      "url": "https://v2.xxapi.cn/api/baiduhot",
+      "method": "GET",
+      "type": "text",
+      "enabled": true,
+      "description": "获取百度热搜榜",
+      "params": {},
+      "dataPath": "data"
+    },
+    "bilibilihot": {
+      "name": "B站热门",
+      "url": "https://v2.xxapi.cn/api/bilibilihot",
+      "method": "GET",
+      "type": "text",
+      "enabled": true,
+      "description": "获取B站热门视频",
+      "params": {},
+      "dataPath": "data"
+    },
+    "hot": {
+      "name": "热搜聚合",
+      "url": null,
+      "method": "GET",
+      "type": "text",
+      "enabled": true,
+      "description": "聚合所有热搜榜，一次性展示(allhot别名)",
+      "params": {},
+      "customHandler": true
+    }
+  },
+  "rateLimit": {
+    "perUser": 10,
+    "timeWindow": 60000,
+    "enabled": true
+  },
+  "cache": {
+    "enabled": true,
+    "expiry": 3600000
+  }
+} 

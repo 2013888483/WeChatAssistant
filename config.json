@@ -1,0 +1,36 @@
+{
+  "enabledPlugins": ["weather", "ai-chat", "morning-alert","api-toolkit","api-speedtest"],
+  "pluginSettings": {
+    "weather": {
+      "api": "amap",
+      "key": "f6a62164befa4e6bf284cff1525356fa",
+      "defaultCity": "北京"
+    },
+    "ai-chat": {
+      "defaultModel": "deepseek",
+      "models": {
+        "deepseek": {
+          "name": "DeepSeek",
+          "apiKey": "sk-3e623af9b3194461afdd0ff57466087f",
+          "enabled": true
+        },
+        "siliconflow": {
+          "name": "SiliconFlow",
+          "apiKey": "sk-ajuxtzuuywbmneogntibetghldiwguyrynvrrxpdvgcdmqfq",
+          "enabled": true,
+          "model": "deepseek-ai/DeepSeek-V3"
+        },
+        "openai": {
+          "name": "OpenAI",
+          "apiKey": "",
+          "enabled": false
+        }
+      }
+    },
+    "morning-alert": {
+      "enabled": true,
+      "time": "07:00"
+    }
+  },
+  "adminUsers": []
+} 

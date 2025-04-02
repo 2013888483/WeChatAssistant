@@ -9,6 +9,7 @@
 - 🔧 **API工具箱**：提供各种实用API服务
 - ⏱️ **早报提醒**：每日定时推送信息
 - 🚀 **网速测试**：测试AI接口响应速度
+- 🔒 **权限管理**：基本的管理员权限控制
 
 ## 安装方法
 
@@ -19,26 +20,14 @@
 
 ### 安装步骤
 
-1. 进入无界BNCR插件目录
-```bash
-cd /path/to/无界BNCR/plugin/
-```
+1. 进入无界BNCR插件目录新建文件夹WeChatAssistant
 
-2. 克隆仓库
+2. 克隆仓库，将本仓库所有代码放置到文件夹中
 ```bash
 git clone https://github.com/2013888483/WeChatAssistant.git
-cd WeChatAssistant
 ```
 
-3. 配置文件设置
-```bash
-# 创建配置文件
-cp config.example.json config.json
-
-# 编辑配置文件，填入API密钥等信息
-nano config.json
-```
-
+3. 配置文件设置将config.example.json文件重命名为config.json，并修改相关配置
 4. 重启无界BNCR服务，插件将自动加载
 
 ## 使用方法
@@ -171,7 +160,41 @@ module.exports = {
 1. 在 `plugins/` 目录下创建新的插件目录
 2. 实现上述插件结构
 3. 在 `config.json` 的 `enabledPlugins` 数组中添加插件名称
-4. 重启无界BNCR框架或使用 `/plugins reload <插件名>` 命令加载插件
+4. 修改智能助手.js中的@rule规则
+5. 重启无界BNCR框架或使用 `/plugins reload <插件名>` 命令加载插件
+
+## 权限管理系统
+
+当前系统实现了基本的权限管理机制，主要通过`config.json`文件中的`adminUsers`数组配置：
+
+```json
+{
+  "adminUsers": ["user123", "admin456"]
+}
+```
+
+### 管理员权限
+
+拥有管理员权限的用户可以执行以下操作：
+- 插件管理（启用/禁用/重载）
+- 查看所有用户的聊天记录
+- 修改全局配置
+- 执行特权命令
+
+### 权限相关命令
+
+- `/admin list` - 查看当前管理员列表（仅管理员可用）
+- `/admin add <用户ID>` - 添加管理员（仅管理员可用）
+- `/admin remove <用户ID>` - 移除管理员（仅管理员可用）
+
+### 后续权限系统规划
+
+未来将考虑实现更细粒度的权限控制：
+- 基于角色的权限系统（RBAC）
+- 针对特定命令的权限控制
+- 针对特定功能的使用限制
+- 用户组管理
+- 白名单/黑名单机制
 
 ## 常见问题
 

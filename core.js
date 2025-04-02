@@ -26,6 +26,9 @@ const BncrDB = global.BncrDB;
 const configDB = new BncrDB('wechat_assistant_config');
 const pluginsDB = new BncrDB('wechat_assistant_plugins');
 
+// 导入权限管理模块
+const permissionManager = require('./permission-manager');
+
 // 创建事件发射器
 class WechatAssistantCore extends EventEmitter {
   constructor() {
@@ -38,6 +41,7 @@ class WechatAssistantCore extends EventEmitter {
       enabledPlugins: [], // 默认启用的插件
     };
     this.config = {}; // 全局配置
+    this.permissionManager = permissionManager; // 权限管理器
   }
 
   // 初始化
@@ -228,16 +232,90 @@ class WechatAssistantCore extends EventEmitter {
         }
         
         // 添加管理命令
-        if (await sender.isAdmin()) {
+        if (this.permissionManager.isAdmin(sender.getUserId())) {
           helpSections.push(`\n🔧 【管理员命令】
   ➤ /plugins list - 查看所有插件
   ➤ /plugins enable <插件名> - 启用插件
   ➤ /plugins disable <插件名> - 禁用插件
-  ➤ /plugins reload <插件名> - 重新加载插件`);
+  ➤ /plugins reload <插件名> - 重新加载插件
+  ➤ /admin list - 查看所有管理员
+  ➤ /admin add <用户ID> - 添加管理员
+  ➤ /admin remove <用户ID> - 移除管理员`);
         }
         
         // 发送帮助信息
         await sender.reply(helpSections.join('\n'));
+      }
+    });
+
+    // 添加管理员命令
+    this.registerCommand('core', {
+      name: 'admin_list',
+      pattern: /^\/admin list$/,
+      description: '列出所有管理员',
+      handler: async function(sender) {
+        // 检查权限
+        const userId = sender.getUserId();
+        if (!this.permissionManager.isAdmin(userId)) {
+          await sender.reply('您没有管理员权限');
+          return;
+        }
+        
+        // 获取所有管理员
+        const admins = this.permissionManager.getAllAdmins();
+        if (admins.length === 0) {
+          await sender.reply('当前没有配置任何管理员');
+        } else {
+          await sender.reply(`管理员列表：\n${admins.join('\n')}`);
+        }
+      }
+    });
+    
+    this.registerCommand('core', {
+      name: 'admin_add',
+      pattern: /^\/admin add (\S+)$/,
+      description: '添加管理员',
+      handler: async function(sender, match) {
+        // 检查权限
+        const userId = sender.getUserId();
+        if (!this.permissionManager.isAdmin(userId)) {
+          await sender.reply('您没有管理员权限');
+          return;
+        }
+        
+        // 添加管理员
+        const newAdminId = match[1];
+        const result = this.permissionManager.addAdmin(newAdminId);
+        
+        if (result) {
+          await sender.reply(`已成功添加管理员：${newAdminId}`);
+        } else {
+          await sender.reply(`添加管理员失败，可能该用户已经是管理员`);
+        }
+      }
+    });
+    
+    this.registerCommand('core', {
+      name: 'admin_remove',
+      pattern: /^\/admin remove (\S+)$/,
+      description: '移除管理员',
+      handler: async function(sender, match) {
+        // 检查权限
+        const userId = sender.getUserId();
+        if (!this.permissionManager.isAdmin(userId)) {
+          await sender.reply('您没有管理员权限');
+          return;
+        }
+        
+        // 移除管理员
+        const adminId = match[1];
+        const result = this.permissionManager.removeAdmin(adminId);
+        
+        if (result) {
+          await sender.reply(`已成功移除管理员：${adminId}`);
+        } else {
+          await sender.reply(`移除管理员失败，可能该用户不是管理员`);
+        }
       }
     });
   }
@@ -466,10 +544,17 @@ module.exports = async (sender) => {
   }
   
   const message = sender.getMsg();
-  const isAdmin = await sender.isAdmin();
+  const userId = sender.getUserId();
   
-  // 处理插件管理命令
-  if (isAdmin && message.startsWith('/plugins')) {
+  // 处理插件管理命令 - 使用权限管理器检查
+  if (message.startsWith('/plugins')) {
+    // 检查管理员权限
+    const isAdmin = core.permissionManager.isAdmin(userId);
+    if (!isAdmin) {
+      await sender.reply('您没有管理员权限，无法执行插件管理命令');
+      return;
+    }
+    
     const match = message.match(/^\/plugins (list|enable|disable|reload)( .+)?$/);
     if (match) {
       const action = match[1];

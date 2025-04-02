@@ -35,10 +35,13 @@ git clone https://github.com/2013888483/WeChatAssistant.git
 ### 基础命令
 
 - `/help` - 显示帮助信息
-- `/plugins list` - 列出所有可用插件
-- `/plugins enable <插件名>` - 启用指定插件
-- `/plugins disable <插件名>` - 禁用指定插件
-- `/plugins reload <插件名>` - 重新加载插件
+- `/plugins list` - 列出所有可用插件 (需管理员权限)
+- `/plugins enable <插件名>` - 启用指定插件 (需管理员权限)
+- `/plugins disable <插件名>` - 禁用指定插件 (需管理员权限)
+- `/plugins reload <插件名>` - 重新加载插件 (需管理员权限)
+- `/admin list` - 查看当前管理员列表 (需管理员权限)
+- `/admin add <用户ID>` - 添加新管理员 (需管理员权限)
+- `/admin remove <用户ID>` - 移除管理员 (需管理员权限)
 
 ### 天气服务
 
@@ -105,14 +108,14 @@ git clone https://github.com/2013888483/WeChatAssistant.git
       "time": "07:00"
     }
   },
-  "adminUsers": []
+  "adminUsers": ["wxid_ao7xxx0iz3m822"]
 }
 ```
 
 说明：
 - `enabledPlugins`: 已启用的插件列表
 - `pluginSettings`: 各插件的具体配置
-- `adminUsers`: 管理员用户ID列表，可以使用管理员命令
+- `adminUsers`: 管理员用户ID列表，管理员可以执行插件管理和系统管理命令
 
 ## 插件机制
 
@@ -169,7 +172,7 @@ module.exports = {
 
 ```json
 {
-  "adminUsers": ["user123", "admin456"]
+  "adminUsers": ["wxid_ao7xxx0iz3m822", "user123"]
 }
 ```
 
@@ -177,7 +180,7 @@ module.exports = {
 
 拥有管理员权限的用户可以执行以下操作：
 - 插件管理（启用/禁用/重载）
-- 查看所有用户的聊天记录
+- 管理员用户管理（添加/删除管理员）
 - 修改全局配置
 - 执行特权命令
 
@@ -186,6 +189,16 @@ module.exports = {
 - `/admin list` - 查看当前管理员列表（仅管理员可用）
 - `/admin add <用户ID>` - 添加管理员（仅管理员可用）
 - `/admin remove <用户ID>` - 移除管理员（仅管理员可用）
+
+### 权限系统实现
+
+权限系统基于`permission-manager.js`模块实现，该模块提供了以下功能：
+- 从`config.json`文件加载管理员列表
+- 提供管理员身份验证
+- 管理员添加和移除
+- 保存权限更改到配置文件
+
+权限检查已集成到所有需要管理员权限的命令中，未授权用户将收到权限不足的提示。
 
 ### 后续权限系统规划
 
@@ -199,13 +212,15 @@ module.exports = {
 ## 常见问题
 
 **Q: 如何添加新的管理员？**  
-A: 编辑 `config.json` 文件，在 `adminUsers` 数组中添加用户ID。
+A: 有两种方法：
+   1. 使用命令：管理员可以执行 `/admin add wxid_xxx` 命令添加新管理员
+   2. 编辑配置：修改 `config.json` 文件，在 `adminUsers` 数组中添加用户ID，格式: `"adminUsers": ["wxid_ao7xxx0iz3m822"]`
 
 **Q: 插件不工作怎么办？**  
 A: 检查以下几点：
 1. 确认插件在 `enabledPlugins` 列表中
 2. 查看插件配置是否正确（特别是API密钥）
-3. 使用 `/plugins reload <插件名>` 重新加载插件
+3. 使用 `/plugins reload <插件名>` 重新加载插件（需管理员权限）
 4. 检查无界BNCR的日志输出
 
 **Q: 如何更新插件系统？**  

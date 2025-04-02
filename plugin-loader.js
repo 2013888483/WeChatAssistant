@@ -5,6 +5,10 @@
  * @origin bncr
  * @version 1.0.0
  * @description 负责加载和管理微信智能助手的插件模块
+ * @rule none
+ * @admin true
+ * @public false
+ * @disable true
  */
 
 const fs = require('fs');

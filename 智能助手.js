@@ -20,6 +20,9 @@
  * @rule ^/api list$
  * @rule ^/api ([a-zA-Z0-9_]+)$
  * @rule ^/clear$
+ * @rule ^/admin list$
+ * @rule ^/admin add (\S+)$
+ * @rule ^/admin remove (\S+)$
  * @admin false
  * @public true
  * @priority 100

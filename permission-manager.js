@@ -2,6 +2,12 @@
  * @name 权限管理模块
  * @description 管理用户权限和访问控制
  * @version 1.0.0
+ * @author shuaijin
+ * @team shuaijin
+ * @rule none
+ * @admin true
+ * @public false
+ * @disable true
  */
 
 const fs = require('fs');

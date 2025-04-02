@@ -34,4 +34,7 @@ Thumbs.db
 
 # 临时文件
 tmp/
-temp/ 
+temp/
+
+# 敏感配置文件（只忽略根目录的config.json）
+/config.json 

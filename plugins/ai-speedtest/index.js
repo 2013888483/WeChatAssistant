@@ -44,7 +44,25 @@ exports.initialize = async function(core, pluginConfig) {
   // 设置定时测速任务
   this.setupSpeedTest();
   
+  // 输出调试信息
   console.log('[AI模型测速] 插件已初始化');
+  console.log('[AI模型测速] 可用插件列表:', Array.from(core.plugins.keys()).join(', '));
+  
+  // 尝试获取ai-chat插件
+  const aiChatPlugin = core.plugins.get('ai-chat');
+  if (aiChatPlugin) {
+    console.log('[AI模型测速] 成功找到AI聊天插件');
+  } else {
+    console.warn('[AI模型测速] 警告: 未找到AI聊天插件，请确保ai-chat插件已加载');
+    // 尝试其他可能的名称
+    const possibleNames = ['ai-chat', 'ai_chat', 'ai.chat', 'aichat', 'AI-chat', 'ai'];
+    for (const name of possibleNames) {
+      if (core.plugins.has(name)) {
+        console.log(`[AI模型测速] 发现可能的AI聊天插件: ${name}`);
+      }
+    }
+  }
+  
   return true;
 };
 
@@ -104,8 +122,22 @@ function getTestableModels(aiConfig, testConfig) {
 // 运行模型测速
 exports.runSpeedTest = async function(sender = null) {
   try {
-    // 获取AI插件
-    const aiChatPlugin = this.core.plugins.get('ai-chat')?.instance;
+    console.log(`[AI模型测速] 开始测速测试，sender:`, sender ? '用户触发' : '自动触发');
+    console.log(`[AI模型测速] 可用插件列表:`, Array.from(this.core.plugins.keys()).join(', '));
+    
+    // 获取AI插件 - 尝试多个可能的名称
+    let aiChatPlugin = null;
+    const possibleNames = ['ai-chat', 'ai_chat', 'ai.chat', 'aichat', 'AI-chat', 'ai'];
+    
+    for (const name of possibleNames) {
+      const plugin = this.core.plugins.get(name);
+      if (plugin?.instance) {
+        aiChatPlugin = plugin.instance;
+        console.log(`[AI模型测速] 使用插件名称 "${name}" 找到AI聊天插件`);
+        break;
+      }
+    }
+    
     if (!aiChatPlugin) {
       const error = "AI聊天插件未加载或不可用";
       console.error(`[AI模型测速] ${error}`);
@@ -114,8 +146,20 @@ exports.runSpeedTest = async function(sender = null) {
     }
     
     // 确保chatWithAI函数存在并且可以调用
-    if (!aiChatPlugin.chatWithAI) {
-      const error = "AI聊天插件的chatWithAI方法不可用";
+    if (typeof aiChatPlugin.chatWithAI !== 'function') {
+      console.error(`[AI模型测速] AI聊天插件结构:`, Object.keys(aiChatPlugin));
+      
+      // 查找可能的聊天方法
+      let chatMethod = null;
+      for (const key of Object.keys(aiChatPlugin)) {
+        if (typeof aiChatPlugin[key] === 'function' && 
+            (key.includes('chat') || key.includes('talk') || key.includes('ask'))) {
+          chatMethod = key;
+          console.log(`[AI模型测速] 发现可能的聊天方法: ${key}`);
+        }
+      }
+      
+      const error = `AI聊天插件的chatWithAI方法不可用${chatMethod ? `，但找到可能的方法: ${chatMethod}` : ''}`;
       console.error(`[AI模型测速] ${error}`);
       if (sender) await sender.reply(`❌ ${error}`);
       return;
@@ -130,7 +174,28 @@ exports.runSpeedTest = async function(sender = null) {
       return;
     }
     
-    console.log(`[AI模型测速] AI配置加载成功:`, JSON.stringify(aiConfig).substring(0, 100) + '...');
+    console.log(`[AI模型测速] AI配置加载成功，配置项:`, Object.keys(aiConfig));
+    
+    // 检查模型配置
+    if (!aiConfig.models) {
+      console.log(`[AI模型测速] 警告: 未找到models配置，尝试自动填充默认模型`);
+      
+      // 尝试使用defaultModel创建一个临时模型配置
+      if (aiConfig.defaultModel) {
+        aiConfig.models = {
+          [aiConfig.defaultModel]: { 
+            enabled: true,
+            apiKey: '已配置' // 假设已经在内部配置
+          }
+        };
+        console.log(`[AI模型测速] 使用默认模型创建临时配置: ${aiConfig.defaultModel}`);
+      } else {
+        const error = "AI聊天插件缺少模型配置";
+        console.error(`[AI模型测速] ${error}`);
+        if (sender) await sender.reply(`❌ ${error}`);
+        return;
+      }
+    }
     
     // 从AI聊天插件配置中获取可测试的模型
     const modelsToTest = getTestableModels(aiConfig, this.config);
@@ -274,7 +339,7 @@ exports.runSpeedTest = async function(sender = null) {
       }
       
       if (fastestModel) {
-        resultMsg += `\n🏆 最快的模型: ${fastestModel} (${fastestTime}ms)`;
+        resultMsg += `\n🏆 最快的模型: ${fastestModel} (${fastestTime}ms)`
         
         if (this.config.autoSwitch) {
           resultMsg += `\n✨ 已自动将默认模型切换为 ${fastestModel}`;
@@ -317,14 +382,20 @@ exports.runSpeedTest = async function(sender = null) {
 exports.commands = [
   {
     name: "speedtest",
-    pattern: /^\/speedtest$/,
+    pattern: /^\/speedtest$/i,
     description: "测试所有AI模型的响应速度",
     handler: async function(sender, match) {
       try {
+        // 记录消息信息
+        const message = sender.getMsg();
+        const userId = sender.getUserId();
+        console.log(`[AI模型测速] 接收到用户 ${userId} 的测速命令: ${message}`);
+        
         console.log(`[AI模型测速] 开始执行/speedtest命令`);
         
         // 先发送一条提示消息
-        await sender.reply("正在准备AI模型速度测试，这可能需要几分钟时间...");
+        const responseMsg = await sender.reply("正在准备AI模型速度测试，这可能需要几分钟时间...");
+        console.log(`[AI模型测速] 已发送准备消息，ID: ${responseMsg || 'unknown'}`);
         
         // 获取AI插件，先检查是否可用
         const aiChatPlugin = this.core.plugins.get('ai-chat')?.instance;
@@ -334,7 +405,7 @@ exports.commands = [
           return;
         }
         
-        console.log(`[AI模型测速] 成功获取AI聊天插件`);
+        console.log(`[AI模型测速] 成功获取AI聊天插件: ${typeof aiChatPlugin}`);
         
         // 检查方法是否存在
         if (typeof this.runSpeedTest !== 'function') {
@@ -343,11 +414,15 @@ exports.commands = [
           return;
         }
         
+        console.log(`[AI模型测速] runSpeedTest方法检查通过`);
+        
         if (typeof aiChatPlugin.chatWithAI !== 'function') {
           console.error(`[AI模型测速] AI聊天插件的chatWithAI方法不是函数`);
           await sender.reply(`❌ 无法执行测速: AI聊天插件的对话功能不可用`);
           return;
         }
+        
+        console.log(`[AI模型测速] AI聊天插件的chatWithAI方法检查通过`);
         
         // 确保配置有效
         if (!this.config) {
@@ -356,8 +431,11 @@ exports.commands = [
           return;
         }
         
+        console.log(`[AI模型测速] 插件配置检查通过，开始执行测速测试`);
+        
         // 执行测速
         try {
+          console.log(`[AI模型测速] 调用 this.runSpeedTest(sender)`);
           await this.runSpeedTest(sender);
           console.log(`[AI模型测速] 测速测试完成`);
         } catch (speedTestError) {
@@ -376,7 +454,7 @@ exports.commands = [
   },
   {
     name: "speedtest_config",
-    pattern: /^\/speedtest config (.+) (.+)$/,
+    pattern: /^\/speedtest config (.+) (.+)$/i,
     description: "配置测速参数(参数名 参数值)",
     handler: async function(sender, match) {
       try {
@@ -460,10 +538,12 @@ exports.commands = [
   },
   {
     name: "speedtest_info",
-    pattern: /^\/speedtest info$/,
+    pattern: /^\/speedtest info$/i,
     description: "查看测速插件的配置和上次测试结果",
     handler: async function(sender, match) {
       try {
+        console.log(`[AI模型测速] 执行/speedtest info命令`);
+        
         // 获取AI插件配置
         const aiChatPlugin = this.core.plugins.get('ai-chat')?.instance;
         if (!aiChatPlugin) {
@@ -519,6 +599,7 @@ exports.commands = [
         }
         
         await sender.reply(info);
+        console.log(`[AI模型测速] /speedtest info命令完成`);
       } catch (error) {
         console.error(`[AI模型测速] 获取信息失败:`, error.message || '未知错误');
         try {

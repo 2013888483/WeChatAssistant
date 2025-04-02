@@ -302,13 +302,30 @@ exports.commands = [
     description: "测试所有AI模型的响应速度",
     handler: async function(sender, match) {
       try {
+        console.log(`[AI模型测速] 开始执行/speedtest命令`);
+        
+        // 先发送一条提示消息
+        await sender.reply("正在准备AI模型速度测试，这可能需要几分钟时间...");
+        
+        // 获取AI插件，先检查是否可用
+        const aiChatPlugin = this.core.plugins.get('ai-chat')?.instance;
+        if (!aiChatPlugin) {
+          console.error(`[AI模型测速] AI聊天插件未加载或不可用`);
+          await sender.reply(`❌ 无法执行测速: AI聊天插件未加载或不可用`);
+          return;
+        }
+        
+        console.log(`[AI模型测速] 成功获取AI聊天插件`);
+        
+        // 执行测速
         await this.runSpeedTest(sender);
+        console.log(`[AI模型测速] 测速测试完成`);
       } catch (error) {
-        console.error(`[AI模型测速] 执行测速命令失败:`, error.message || '未知错误');
+        console.error(`[AI模型测速] 执行测速命令失败:`, error);
         try {
-          await sender.reply(`❌ 执行测速命令失败: ${error.message || '未知错误'}`);
+          await sender.reply(`❌ 执行测速命令失败: ${error.message || '未知错误'}\n${error.stack || ''}`);
         } catch (e) {
-          // 忽略最终错误
+          console.error(`[AI模型测速] 发送错误消息失败:`, e);
         }
       }
     }

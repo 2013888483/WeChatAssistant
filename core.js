@@ -1,6 +1,6 @@
 /**
  * @author shuaijin
- * @name 微信智能助手核心模块
+ * @name core
  * @team shuaijin
  * @origin bncr
  * @version 1.0.0

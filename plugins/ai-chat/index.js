@@ -32,73 +32,80 @@ function loadGlobalConfig() {
   return null;
 }
 
-// 插件默认配置
-exports.defaultConfig = (() => {
-  const globalConfig = loadGlobalConfig();
+// 检查配置中是否包含必要的字段
+function validateConfig(config) {
+  if (!config) return false;
+  if (!config.models || Object.keys(config.models).length === 0) return false;
+  if (!config.defaultModel) return false;
   
-  // 如果成功读取了全局配置，使用其中的AI聊天配置
-  if (globalConfig && globalConfig.pluginSettings && globalConfig.pluginSettings['ai-chat']) {
-    console.log('[AI聊天] 从全局配置文件加载配置');
-    return globalConfig.pluginSettings['ai-chat'];
-  }
+  // 检查默认模型是否存在
+  if (!config.models[config.defaultModel]) return false;
   
-  // 否则使用默认配置
-  console.log('[AI聊天] 使用默认配置');
-  return {
-    enabled: true,
-    defaultModel: "deepseek",
-    models: {
-      deepseek: {
-        name: "DeepSeek",
-        apiKey: "sk-3e623af9b3194461afdd0ff57466087f",
-        enabled: true
-      },
-      siliconflow: {
-        name: "SiliconFlow",
-        apiKey: "sk-ajuxtzuuywbmneogntibetghldiwguyrynvrrxpdvgcdmqfq",
-        enabled: true,
-        model: "deepseek-ai/DeepSeek-V3"
-      },
-      openai: {
-        name: "OpenAI",
-        apiKey: "",
-        enabled: false
-      }
-    },
-    chatTimeout: 7200000 // 聊天记录保存2小时(毫秒)
-  };
-})();
+  return true;
+}
 
-// 聊天历史记录缓存
-const chatHistories = new Map();
+// 插件默认配置 - 只在配置文件不存在或配置无效时使用
+const fallbackConfig = {
+  enabled: true,
+  defaultModel: "deepseek",
+  models: {
+    deepseek: {
+      name: "DeepSeek",
+      apiKey: "",
+      enabled: true
+    }
+  },
+  chatTimeout: 7200000 // 聊天记录保存2小时(毫秒)
+};
 
 // 插件初始化方法
 exports.initialize = async function(core, pluginConfig) {
-  // 存储core引用和配置
+  // 存储core引用
   this.core = core;
   
-  // 合并配置 - 如果pluginConfig为空，使用defaultConfig
-  this.config = pluginConfig && Object.keys(pluginConfig).length > 0 
-    ? pluginConfig 
-    : this.defaultConfig;
-    
-  // 确保有效的模型配置
-  if (!this.config.models) {
-    console.warn('[AI聊天] 配置中缺少models，使用默认配置');
-    this.config.models = this.defaultConfig.models;
+  // 尝试从全局配置加载
+  const globalConfig = loadGlobalConfig();
+  let aiChatConfig = null;
+  
+  if (globalConfig && globalConfig.pluginSettings && globalConfig.pluginSettings['ai-chat']) {
+    aiChatConfig = globalConfig.pluginSettings['ai-chat'];
+    console.log('[AI聊天] 从全局配置文件加载配置');
   }
   
-  // 确保有默认模型
-  if (!this.config.defaultModel || !this.config.models[this.config.defaultModel]) {
-    console.warn('[AI聊天] 默认模型无效，将使用第一个可用模型');
-    const availableModels = Object.keys(this.config.models);
-    if (availableModels.length > 0) {
-      this.config.defaultModel = availableModels[0];
-    } else {
-      console.error('[AI聊天] 没有可用的AI模型');
-      return false;
+  // 如果全局配置无效，尝试使用传入的pluginConfig
+  if (!validateConfig(aiChatConfig) && pluginConfig && validateConfig(pluginConfig)) {
+    aiChatConfig = pluginConfig;
+    console.log('[AI聊天] 从插件配置加载配置');
+  }
+  
+  // 如果配置仍然无效，使用最小化的fallback配置并记录警告
+  if (!validateConfig(aiChatConfig)) {
+    console.warn('[AI聊天] 配置无效或不完整，插件可能无法正常工作');
+    console.warn('[AI聊天] 请在config.json的pluginSettings中添加有效的ai-chat配置');
+    
+    // 使用最小化的后备配置
+    aiChatConfig = fallbackConfig;
+    console.log('[AI聊天] 使用后备配置');
+    
+    // 尝试将后备配置写入全局配置
+    if (globalConfig) {
+      if (!globalConfig.pluginSettings) {
+        globalConfig.pluginSettings = {};
+      }
+      globalConfig.pluginSettings['ai-chat'] = aiChatConfig;
+      
+      try {
+        const configPath = path.join(__dirname, '../../config.json');
+        fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2), 'utf8');
+        console.log('[AI聊天] 已将后备配置写入全局配置文件');
+      } catch (error) {
+        console.error('[AI聊天] 写入配置文件失败:', error.message);
+      }
     }
   }
+  
+  // 最终设置配置
+  this.config = aiChatConfig;
   
   // 定期清理过期的聊天历史
   setInterval(() => {
@@ -108,6 +115,9 @@ exports.initialize = async function(core, pluginConfig) {
   console.log(`[AI聊天] 插件已初始化，默认模型: ${this.config.defaultModel}`);
   return true;
 };
+
+// 聊天历史记录缓存
+const chatHistories = new Map();
 
 // 清理过期的聊天历史
 exports.cleanupChatHistories = function() {

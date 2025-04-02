@@ -1,28 +1,133 @@
 # 微信智能助手插件系统
 
-微信智能助手插件系统是一个模块化、可扩展的框架，允许通过插件形式添加新功能，而不是直接修改核心代码。
+一个为无界BNCR框架设计的模块化、可扩展的微信智能助手插件系统，支持天气查询、AI聊天、API工具箱等多种功能。
 
-## 架构设计
+## 主要功能
 
-该系统采用以下架构：
+- 🌤️ **天气服务**：查询实时天气和天气预报
+- 🤖 **AI聊天**：支持多种AI模型（DeepSeek、SiliconFlow、OpenAI等）
+- 🔧 **API工具箱**：提供各种实用API服务
+- ⏱️ **早报提醒**：每日定时推送信息
+- 🚀 **网速测试**：测试AI接口响应速度
 
-1. **核心模块**：`core.js` - 负责插件加载、管理和消息路由
-2. **插件加载器**：`plugin-loader.js` - 负责初始化插件目录和监控插件变化
-3. **配置系统**：`config.json` - 全局配置文件，管理插件启用状态和参数
-4. **插件目录**：`plugins/` - 包含所有功能插件，每个插件有自己的目录
+## 安装方法
 
-## 配置驱动设计
+### 前置要求
 
-所有功能都通过配置文件驱动，而非硬编码实现：
+- 无界BNCR框架环境
+- Node.js (建议v14.0.0+)
 
-1. 全局配置文件 (`config.json`) 控制启用哪些插件
-2. 每个插件有自己的默认配置
-3. 配置可通过Web界面或命令修改
-4. 配置变更自动通知相关插件
+### 安装步骤
 
-## 插件接口
+1. 进入无界BNCR插件目录
+```bash
+cd /path/to/无界BNCR/plugin/
+```
 
-每个插件必须实现以下接口：
+2. 克隆仓库
+```bash
+git clone https://github.com/2013888483/WeChatAssistant.git
+cd WeChatAssistant
+```
+
+3. 配置文件设置
+```bash
+# 创建配置文件
+cp config.example.json config.json
+
+# 编辑配置文件，填入API密钥等信息
+nano config.json
+```
+
+4. 重启无界BNCR服务，插件将自动加载
+
+## 使用方法
+
+### 基础命令
+
+- `/help` - 显示帮助信息
+- `/plugins list` - 列出所有可用插件
+- `/plugins enable <插件名>` - 启用指定插件
+- `/plugins disable <插件名>` - 禁用指定插件
+- `/plugins reload <插件名>` - 重新加载插件
+
+### 天气服务
+
+- `/天气 <城市名>` 或 `/weather <城市名>` - 查询指定城市的实时天气
+- `/天气配置` 或 `/weather_config` - 查看当前天气服务配置
+- `/天气配置 set api <API类型>` - 设置天气API类型（amap或openweather）
+- `/天气配置 set key <API密钥>` - 设置API密钥
+- `/天气配置 set defaultCity <城市名>` - 设置默认城市
+
+### AI聊天
+
+- `/chat <内容>` - 与AI对话
+- `/model list` - 查看可用AI模型
+- `/model use <模型名>` - 切换AI模型
+- `/model config <模型名> <参数名> <参数值>` - 设置模型参数
+
+### API工具箱
+
+- `/api list` - 列出所有可用API
+- `/api <API名称> <参数>` - 调用指定API
+
+### 早报提醒
+
+- `/morning on` - 开启每日早报
+- `/morning off` - 关闭每日早报
+- `/morning time <时间>` - 设置早报时间，格式如 07:30
+
+## 配置文件说明
+
+`config.json` 文件用于存储插件系统的全局配置，包括：
+
+```json
+{
+  "enabledPlugins": ["weather", "ai-chat", "morning-alert", "api-toolkit", "api-speedtest"],
+  "pluginSettings": {
+    "weather": {
+      "api": "amap",
+      "key": "YOUR_API_KEY",
+      "defaultCity": "北京"
+    },
+    "ai-chat": {
+      "defaultModel": "deepseek",
+      "models": {
+        "deepseek": {
+          "name": "DeepSeek",
+          "apiKey": "YOUR_API_KEY",
+          "enabled": true
+        },
+        "siliconflow": {
+          "name": "SiliconFlow",
+          "apiKey": "YOUR_API_KEY",
+          "enabled": true,
+          "model": "deepseek-ai/DeepSeek-V3"
+        },
+        "openai": {
+          "name": "OpenAI",
+          "apiKey": "",
+          "enabled": false
+        }
+      }
+    },
+    "morning-alert": {
+      "enabled": true,
+      "time": "07:00"
+    }
+  },
+  "adminUsers": []
+}
+```
+
+说明：
+- `enabledPlugins`: 已启用的插件列表
+- `pluginSettings`: 各插件的具体配置
+- `adminUsers`: 管理员用户ID列表，可以使用管理员命令
+
+## 插件机制
+
+该系统采用模块化插件设计，每个插件都符合以下结构：
 
 ```javascript
 module.exports = {
@@ -41,20 +146,15 @@ module.exports = {
   
   // 初始化函数
   initialize: async function(core, pluginConfig) {
-    // 初始化代码
+    // 插件初始化代码
     return true;
   },
   
-  // 命令列表
-  commands: [
-    {
-      name: "command_name",
-      pattern: /^\/command (.+)$/,
-      handler: async function(sender, match) {
-        // 处理命令
-      }
-    }
-  ],
+  // 命令处理
+  onMessage: async function(message) {
+    // 消息处理代码
+    return response;
+  },
   
   // 卸载函数
   unload: async function() {
@@ -64,48 +164,34 @@ module.exports = {
 };
 ```
 
-## 当前插件
+## 自定义开发
 
-系统默认包含以下插件：
-
-1. **天气插件**：提供天气查询功能
-   - `/weather 城市名` - 查询实时天气
-   - `/forecast 城市名` - 查询天气预报
-
-2. **AI聊天插件**：提供AI对话功能
-   - `/chat 内容` - 与AI对话
-   - `/model list` - 列出可用AI模型
-   - `/model use 模型名` - 切换AI模型
-   - `/model config 模型名 参数名 参数值` - 配置AI模型参数
-   - `/clear` - 清除聊天历史
-
-3. **其他插件**：根据需求可以添加更多插件
-
-## 添加新插件
-
-添加新插件的步骤：
+您可以通过开发新插件来扩展系统功能：
 
 1. 在 `plugins/` 目录下创建新的插件目录
-2. 创建 `index.js` 并实现插件接口
-3. 可选：创建 `config.json` 配置文件
-4. 在全局配置中启用插件
+2. 实现上述插件结构
+3. 在 `config.json` 的 `enabledPlugins` 数组中添加插件名称
+4. 重启无界BNCR框架或使用 `/plugins reload <插件名>` 命令加载插件
 
-## 插件管理命令
+## 常见问题
 
-管理员可以使用以下命令管理插件：
+**Q: 如何添加新的管理员？**  
+A: 编辑 `config.json` 文件，在 `adminUsers` 数组中添加用户ID。
 
-- `/plugins list` - 列出所有插件
-- `/plugins enable 插件名` - 启用插件
-- `/plugins disable 插件名` - 禁用插件
-- `/plugins reload 插件名` - 重新加载插件
+**Q: 插件不工作怎么办？**  
+A: 检查以下几点：
+1. 确认插件在 `enabledPlugins` 列表中
+2. 查看插件配置是否正确（特别是API密钥）
+3. 使用 `/plugins reload <插件名>` 重新加载插件
+4. 检查无界BNCR的日志输出
 
-## 开发新插件
+**Q: 如何更新插件系统？**  
+A: 进入插件目录，执行 `git pull` 拉取最新代码，然后重启无界BNCR框架。
 
-请参考 `plugins/example` 目录中的示例插件，了解如何创建新插件。
+## 免责声明
 
-## 注意事项
+本项目仅供学习和个人使用，请遵守相关法律法规和微信使用条款。
 
-1. 插件之间通过事件机制通信，避免直接依赖
-2. 配置更改会自动保存到数据库
-3. 代码变更会自动重新加载插件
-4. 请勿直接修改核心模块，应通过插件扩展功能 
+## 许可证
+
+本项目采用 MIT 许可证。 

@@ -201,10 +201,12 @@ try {
   // 配置更新后保存到文件
   function onConfigUpdate(config) {
     try {
+      console.log('[智能助手] 配置被更新，准备保存:', JSON.stringify(config));
+      
       // 转换配置格式，确保正确处理数组
       const configToSave = JSON.parse(JSON.stringify(config));
       
-      // 将字符串格式的列表转换为数组(内部使用)
+      // 将字符串格式的列表转换为数组
       if (typeof configToSave.enabledPlugins === 'string' && configToSave.enabledPlugins.trim() !== '') {
         configToSave.enabledPlugins = configToSave.enabledPlugins.split(',').filter(item => item.trim() !== '');
       } else if (!Array.isArray(configToSave.enabledPlugins)) {
@@ -215,6 +217,23 @@ try {
         configToSave.adminUsers = configToSave.adminUsers.split(',').filter(item => item.trim() !== '');
       } else if (!Array.isArray(configToSave.adminUsers)) {
         configToSave.adminUsers = [];
+      }
+      
+      // 检查是否需要保持原有结构(将插件配置放入pluginSettings对象)
+      const readConfig = fs.existsSync(CONFIG_FILE) ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) : {};
+      
+      // 如果原配置使用了pluginSettings结构，保持兼容
+      if (readConfig.pluginSettings) {
+        configToSave.pluginSettings = {};
+        
+        // 转移插件配置到pluginSettings
+        for (const key of ['weather', 'ai-chat', 'morning-alert', 'ai-speedtest']) {
+          if (configToSave[key]) {
+            configToSave.pluginSettings[key] = configToSave[key];
+            // 删除顶层的配置避免重复
+            // delete configToSave[key]; // 保留顶层配置以保证双向兼容
+          }
+        }
       }
       
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');

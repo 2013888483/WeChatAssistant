@@ -28,6 +28,7 @@
  * @priority 100
  * @disable false
  * @cron 0 0 7 * * * 
+ * @classification 工具
  */
 
 // 导入所需模块
@@ -40,14 +41,7 @@ const router = sysMethod.router;
 const BncrDB = global.BncrDB;
 
 // 检查配置Schema支持
-try {
-  // 不在这里尝试加载schema，让config-schema.js自己处理
-  if (global.BncrCreateSchema) {
-    console.log('[智能助手] 检测到BNCR无界环境，配置UI应在独立插件中加载');
-  }
-} catch (error) {
-  console.warn('[智能助手] 检查Schema支持出错:', error.message);
-}
+console.log('[智能助手] 初始化中，配置Schema已作为独立插件加载');
 
 // 加载核心模块
 let core = null;

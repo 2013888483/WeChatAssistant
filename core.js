@@ -10,6 +10,7 @@
  * @public true
  * @priority 100
  * @disable false
+ * @classification 系统
  */
 
 // 导入所需模块

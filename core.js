@@ -44,6 +44,91 @@ class WechatAssistantCore extends EventEmitter {
     this.permissionManager = permissionManager; // 权限管理器
   }
 
+  // 设置事件监听
+  setupEventListeners() {
+    // 监听配置更新事件
+    this.on('config_updated', async (data) => {
+      try {
+        if (data.pluginName) {
+          // 更新特定插件的配置
+          if (this.plugins.has(data.pluginName)) {
+            const plugin = this.plugins.get(data.pluginName);
+            plugin.config = data.config;
+            await configDB.set(`plugin:${data.pluginName}`, data.config);
+            console.log(`[微信助手核心] 已更新插件配置: ${data.pluginName}`);
+          }
+        } else if (data.config) {
+          // 更新全局配置
+          this.config = data.config;
+          await configDB.set('core:config', this.config);
+          console.log('[微信助手核心] 已更新全局配置');
+        }
+      } catch (error) {
+        console.error(`[微信助手核心] 配置更新失败: ${error.message}`);
+      }
+    });
+    
+    // 如果支持BNCR无界的配置更新，添加监听器
+    if (global.BncrOnConfigUpdate) {
+      global.BncrOnConfigUpdate('wechat-assistant', async (newConfig) => {
+        try {
+          console.log('[微信助手核心] 收到来自BNCR无界的配置更新');
+          
+          // 处理启用的插件变化
+          if (newConfig.enabledPlugins) {
+            const oldEnabled = this.config.enabledPlugins || [];
+            const newEnabled = newConfig.enabledPlugins || [];
+            
+            // 找出需要启用的插件
+            const toEnable = newEnabled.filter(p => !oldEnabled.includes(p));
+            
+            // 找出需要禁用的插件
+            const toDisable = oldEnabled.filter(p => !newEnabled.includes(p));
+            
+            // 依次启用插件
+            for (const pluginName of toEnable) {
+              await this.enablePlugin(pluginName);
+            }
+            
+            // 依次禁用插件
+            for (const pluginName of toDisable) {
+              await this.disablePlugin(pluginName);
+            }
+          }
+          
+          // 更新插件配置
+          if (newConfig.pluginSettings) {
+            for (const [pluginName, config] of Object.entries(newConfig.pluginSettings)) {
+              if (this.plugins.has(pluginName)) {
+                const plugin = this.plugins.get(pluginName);
+                plugin.config = config;
+                await configDB.set(`plugin:${pluginName}`, config);
+                console.log(`[微信助手核心] 已从无界更新插件配置: ${pluginName}`);
+              }
+            }
+          }
+          
+          // 更新管理员用户列表
+          if (newConfig.adminUsers) {
+            this.config.adminUsers = newConfig.adminUsers;
+            await permissionManager.loadConfig();
+          }
+          
+          // 更新全局配置
+          this.config = newConfig;
+          await configDB.set('core:config', this.config);
+          console.log('[微信助手核心] 已保存来自无界的全局配置更新');
+          
+          return true;
+        } catch (error) {
+          console.error(`[微信助手核心] 处理无界配置更新失败: ${error.message}`);
+          return false;
+        }
+      });
+      console.log('[微信助手核心] 已注册BNCR无界配置更新回调');
+    }
+  }
+
   // 初始化
   async initialize() {
     // 确保插件目录存在
@@ -53,6 +138,9 @@ class WechatAssistantCore extends EventEmitter {
 
     // 加载全局配置
     this.config = await configDB.get('core:config', this.defaultConfig);
+    
+    // 设置事件监听
+    this.setupEventListeners();
     
     // 加载所有插件
     await this.loadPlugins();

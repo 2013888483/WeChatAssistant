@@ -3,7 +3,7 @@
  * @name 智能助手
  * @team shuaijin
  * @origin bncr
- * @version 1.0.2
+ * @version 1.0.3
  * @description 智能微信助手，支持天气播报、AI对话、每日提醒等功能
  * @rule ^/plugins (list|enable|disable|reload)( .+)?$
  * @rule ^/help$
@@ -39,8 +39,15 @@ const sysMethod = global.sysMethod;
 const router = sysMethod.router;
 const BncrDB = global.BncrDB;
 
-// 如果旧的微信助手还有未处理的数据，可以在这里进行处理
-// 新版本下线后，您可以删除这部分代码
+// 检查配置Schema支持
+try {
+  // 不在这里尝试加载schema，让config-schema.js自己处理
+  if (global.BncrCreateSchema) {
+    console.log('[智能助手] 检测到BNCR无界环境，配置UI应在独立插件中加载');
+  }
+} catch (error) {
+  console.warn('[智能助手] 检查Schema支持出错:', error.message);
+}
 
 // 加载核心模块
 let core = null;

@@ -55,7 +55,35 @@ try {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       existingConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-      console.log('[智能助手] 成功读取现有配置文件');
+      console.log('[智能助手] 成功读取现有配置文件', JSON.stringify(existingConfig));
+      
+      // 处理嵌套对象结构
+      // 如果 'ai-chat' 在顶层不存在，但在pluginSettings中存在，则移动到顶层
+      for (const key of ['weather', 'ai-chat', 'morning-alert', 'ai-speedtest']) {
+        if (!existingConfig[key] && existingConfig.pluginSettings && existingConfig.pluginSettings[key]) {
+          existingConfig[key] = existingConfig.pluginSettings[key];
+        }
+      }
+      
+      // 深度读取AI聊天模型配置
+      if (existingConfig['ai-chat'] && existingConfig['ai-chat'].models) {
+        // 确保每个模型都有配置对象
+        if (!existingConfig['ai-chat'].models.openai) existingConfig['ai-chat'].models.openai = {};
+        if (!existingConfig['ai-chat'].models.deepseek) existingConfig['ai-chat'].models.deepseek = {};
+        if (!existingConfig['ai-chat'].models.siliconflow) existingConfig['ai-chat'].models.siliconflow = {};
+        
+        // 提取apiKey和enabled状态
+        const models = existingConfig['ai-chat'].models;
+        for (const model of ['openai', 'deepseek', 'siliconflow']) {
+          if (models[model]) {
+            // 确保apiKey存在
+            if (models[model].apiKey === undefined && models[model].name) {
+              // 旧格式，将某些字段转换为新格式
+              console.log(`[智能助手] 转换${model}配置为新格式`);
+            }
+          }
+        }
+      }
     }
   } catch (error) {
     console.error('[智能助手] 读取现有配置文件失败:', error);

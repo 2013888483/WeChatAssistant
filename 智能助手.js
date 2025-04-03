@@ -57,43 +57,75 @@ try {
       .setDescription('选择要启用的插件')
       .setDefault([]),
     
-    pluginSettings: BncrCreateSchema.object({
-      weather: BncrCreateSchema.object({
-        api: BncrCreateSchema.string()
-          .setTitle('天气API')
-          .setDescription('选择天气API提供商')
-          .setDefault('amap'),
-        key: BncrCreateSchema.string()
-          .setTitle('API密钥')
-          .setDescription('API提供商的密钥')
-          .setDefault(''),
-        defaultCity: BncrCreateSchema.string()
-          .setTitle('默认城市')
-          .setDescription('默认查询的城市')
-          .setDefault('北京')
-      }).setTitle('天气插件设置'),
-      
-      'ai-chat': BncrCreateSchema.object({
-        defaultModel: BncrCreateSchema.string()
-          .setTitle('默认模型')
-          .setDescription('默认使用的AI模型')
-          .setDefault('deepseekchat'),
-        models: BncrCreateSchema.object({})
-          .setTitle('模型配置')
-          .setDescription('各模型的详细配置')
-      }).setTitle('AI聊天插件设置'),
-      
-      'morning-alert': BncrCreateSchema.object({
-        enabled: BncrCreateSchema.boolean()
-          .setTitle('是否启用')
-          .setDescription('是否启用每日提醒')
-          .setDefault(false),
-        time: BncrCreateSchema.string()
-          .setTitle('提醒时间')
-          .setDescription('每日提醒的时间，格式为HH:MM')
-          .setDefault('07:00')
-      }).setTitle('每日提醒插件设置')
-    }).setTitle('插件设置'),
+    // 天气插件配置
+    weather: BncrCreateSchema.object({
+      api: BncrCreateSchema.string()
+        .setTitle('天气API')
+        .setDescription('选择天气API提供商')
+        .setDefault('amap'),
+      key: BncrCreateSchema.string()
+        .setTitle('API密钥')
+        .setDescription('API提供商的密钥')
+        .setDefault(''),
+      defaultCity: BncrCreateSchema.string()
+        .setTitle('默认城市')
+        .setDescription('默认查询的城市')
+        .setDefault('北京')
+    }).setTitle('天气插件设置'),
+    
+    // AI聊天插件配置
+    'ai-chat': BncrCreateSchema.object({
+      defaultModel: BncrCreateSchema.string()
+        .setTitle('默认模型')
+        .setDescription('默认使用的AI模型')
+        .setDefault('deepseekchat'),
+      models: BncrCreateSchema.object({
+        openai: BncrCreateSchema.object({
+          apiKey: BncrCreateSchema.string()
+            .setTitle('API密钥')
+            .setDescription('OpenAI的API密钥')
+            .setDefault(''),
+          enabled: BncrCreateSchema.boolean()
+            .setTitle('启用状态')
+            .setDescription('是否启用此模型')
+            .setDefault(false)
+        }).setTitle('OpenAI配置'),
+        deepseek: BncrCreateSchema.object({
+          apiKey: BncrCreateSchema.string()
+            .setTitle('API密钥')
+            .setDescription('DeepSeek的API密钥')
+            .setDefault(''),
+          enabled: BncrCreateSchema.boolean()
+            .setTitle('启用状态')
+            .setDescription('是否启用此模型')
+            .setDefault(true)
+        }).setTitle('DeepSeek配置')
+      }).setTitle('模型配置')
+    }).setTitle('AI聊天插件设置'),
+    
+    // 每日提醒插件配置
+    'morning-alert': BncrCreateSchema.object({
+      enabled: BncrCreateSchema.boolean()
+        .setTitle('是否启用')
+        .setDescription('是否启用每日提醒')
+        .setDefault(false),
+      time: BncrCreateSchema.string()
+        .setTitle('提醒时间')
+        .setDescription('每日提醒的时间，格式为HH:MM')
+        .setDefault('07:00')
+    }).setTitle('每日提醒插件设置'),
+    
+    // AI模型测速插件
+    'ai-speedtest': BncrCreateSchema.object({
+      enabled: BncrCreateSchema.boolean()
+        .setTitle('是否启用')
+        .setDescription('是否启用AI模型测速')
+        .setDefault(true),
+      interval: BncrCreateSchema.number()
+        .setTitle('测试间隔')
+        .setDescription('自动测试的间隔（分钟）')
+        .setDefault(60)
+    }).setTitle('AI模型测速插件'),
     
     adminUsers: BncrCreateSchema.array()
       .setTitle('管理员用户')
@@ -119,6 +151,7 @@ try {
   
 } catch (e) {
   console.log('[智能助手] BncrRegisterSchema或相关函数未定义，使用文件配置模式');
+  console.error(e);
 }
 
 // 读取配置

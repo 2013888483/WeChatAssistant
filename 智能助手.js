@@ -26,6 +26,10 @@
  * @rule ^/weconfig$
  * @rule ^/weconfig set (.+) (.+)$
  * @rule ^/weconfig get (.+)$
+ * @rule ^/天气配置$
+ * @rule ^/天气配置 (show|set|reset|api-help)( .+)?$
+ * @rule ^/weather_config$
+ * @rule ^/weather_config (show|set|reset|api-help)( .+)?$
  * @admin false
  * @public true
  * @priority 100
@@ -53,16 +57,21 @@ const jsonSchema = BncrCreateSchema.object({
       .setDefault(true),
     api: BncrCreateSchema.string()
       .setTitle('天气API')
-      .setDescription('选择天气API提供商')
-      .setDefault('amap'),
+      .setDescription('选择天气API提供商，支持amap(高德地图)或openweather')
+      .setDefault('amap')
+      .setEnum(['amap', 'openweather']),
     key: BncrCreateSchema.string()
       .setTitle('API密钥')
-      .setDescription('API提供商的密钥')
+      .setDescription('API提供商的密钥，需要在对应平台申请')
       .setDefault(''),
     defaultCity: BncrCreateSchema.string()
       .setTitle('默认城市')
-      .setDescription('默认查询的城市')
-      .setDefault('北京')
+      .setDescription('默认查询的城市，如北京、上海等')
+      .setDefault('北京'),
+    showAIAdvice: BncrCreateSchema.boolean()
+      .setTitle('显示AI建议')
+      .setDescription('是否在天气信息中显示AI生成的生活建议')
+      .setDefault(false)
   }).setTitle('天气插件设置'),
   
   // AI聊天插件配置
@@ -328,7 +337,8 @@ module.exports = async (sender) => {
     
     // 转发到相应的子插件处理
     // 天气插件命令
-    if (msg.startsWith('/weather') || msg.startsWith('/forecast')) {
+    if (msg.startsWith('/weather') || msg.startsWith('/forecast') || 
+        msg.startsWith('/天气配置') || msg.startsWith('/weather_config')) {
       const weatherConfig = getPluginConfig('weather');
       if (weatherConfig && weatherConfig.enable) {
         try {
@@ -342,80 +352,153 @@ module.exports = async (sender) => {
             // 插件使用exports对象格式，需要直接处理命令
             console.log('[智能助手] 天气插件使用exports格式');
             
-            // 获取查询的城市名称
+            // 获取查询的城市名称或处理配置命令
             let city = '';
-            if (msg.startsWith('/weather')) {
+            let isConfigCommand = false;
+            
+            if (msg.startsWith('/天气配置') || msg.startsWith('/weather_config')) {
+              isConfigCommand = true;
+            } else if (msg.startsWith('/weather')) {
               city = msg.substring('/weather'.length).trim();
             } else if (msg.startsWith('/forecast')) {
               city = msg.substring('/forecast'.length).trim();
             }
             
-            if (!city && weatherConfig.defaultCity) {
-              city = weatherConfig.defaultCity;
-            }
-            
-            if (!city) {
-              await sender.reply('请指定城市名称，例如: /weather 北京');
-              return true;
-            }
-            
             // 确保插件配置正确
             if (!weatherPlugin.config) {
               weatherPlugin.config = weatherConfig;
+            } else {
+              // 确保关键配置项存在
+              if (weatherConfig.key && !weatherPlugin.config.key) {
+                weatherPlugin.config.key = weatherConfig.key;
+              }
+              if (weatherConfig.api && !weatherPlugin.config.api) {
+                weatherPlugin.config.api = weatherConfig.api;
+              }
+              if (weatherConfig.defaultCity && !weatherPlugin.config.defaultCity) {
+                weatherPlugin.config.defaultCity = weatherConfig.defaultCity;
+              }
+              if (weatherConfig.showAIAdvice !== undefined) {
+                weatherPlugin.config.showAIAdvice = weatherConfig.showAIAdvice;
+              }
             }
             
-            // 发送"正在查询"提示
-            const loadingMsg = await sender.reply(`⏳ 正在查询${city}的天气，请稍候...`);
-            
-            try {
-              // 优先使用handleWeatherCommand方法
-              if (typeof weatherPlugin.handleWeatherCommand === 'function') {
-                console.log(`[智能助手] 调用天气插件的handleWeatherCommand方法查询: ${city}`);
-                // 添加发送方信息，包含插件对象
-                sender.plugin = {
-                  config: config
-                };
-                const weatherResult = await weatherPlugin.handleWeatherCommand(city, sender);
-                
-                // 删除加载消息
-                if (loadingMsg) {
-                  await sender.delMsg(loadingMsg);
+            // 处理不同类型的命令
+            if (isConfigCommand) {
+              // 处理配置命令
+              if (typeof weatherPlugin.onMessage === 'function') {
+                try {
+                  console.log(`[智能助手] 调用天气插件的onMessage方法处理配置命令: ${msg}`);
+                  
+                  // 获取core对象 - 修复获取方式
+                  let core = null;
+                  if (global.sysMethod && global.sysMethod.router) {
+                    core = global.sysMethod.router.core;
+                  } else if (global.core) {
+                    core = global.core;
+                  } else if (router && router.core) {
+                    core = router.core;
+                  }
+                  
+                  // 确保core对象存在
+                  if (!core) {
+                    console.warn('[智能助手] 无法获取core对象，尝试使用sysMethod作为替代');
+                    core = global.sysMethod;
+                  }
+                  
+                  // 添加插件相关信息到sender对象
+                  sender.plugin = {
+                    config: config,
+                    core: core // 传递core对象给插件
+                  };
+                  
+                  // 确保消息内容是有效的字符串
+                  if (!sender.content && typeof sender.getMsg === 'function') {
+                    sender.content = sender.getMsg();
+                  }
+                  
+                  // 传递消息到插件，并获取响应
+                  const response = await weatherPlugin.onMessage(sender);
+                  
+                  // 如果插件返回了响应，显示给用户
+                  if (response) {
+                    await sender.reply(response);
+                  }
+                  return true;
+                } catch (configError) {
+                  console.error(`[智能助手] 处理天气配置命令出错: ${configError.message}`);
+                  console.error(configError.stack); // 打印完整错误堆栈
+                  await sender.reply(`处理天气配置命令出错: ${configError.message}`);
+                  return true;
                 }
-                
-                // 发送天气信息
-                await sender.reply(weatherResult);
-                return true;
-              } 
-              // 备用：调用getWeather方法
-              else if (typeof weatherPlugin.getWeather === 'function') {
-                console.log(`[智能助手] 调用天气插件的getWeather方法查询: ${city}`);
-                const weatherResult = await weatherPlugin.getWeather(city);
-                
-                // 删除加载消息
-                if (loadingMsg) {
-                  await sender.delMsg(loadingMsg);
-                }
-                
-                // 发送天气信息
-                await sender.reply(weatherResult);
-                return true;
               } else {
+                await sender.reply('天气插件未实现配置功能，请检查插件版本。');
+                return true;
+              }
+            } else {
+              // 处理天气查询命令
+              if (!city && weatherConfig.defaultCity) {
+                city = weatherConfig.defaultCity;
+              }
+              
+              if (!city) {
+                await sender.reply('请指定城市名称，例如: /weather 北京');
+                return true;
+              }
+              
+              // 发送"正在查询"提示
+              const loadingMsg = await sender.reply(`⏳ 正在查询${city}的天气，请稍候...`);
+              
+              try {
+                // 优先使用handleWeatherCommand方法
+                if (typeof weatherPlugin.handleWeatherCommand === 'function') {
+                  console.log(`[智能助手] 调用天气插件的handleWeatherCommand方法查询: ${city}`);
+                  // 添加发送方信息，包含插件对象
+                  sender.plugin = {
+                    config: config
+                  };
+                  const weatherResult = await weatherPlugin.handleWeatherCommand(city, sender);
+                  
+                  // 删除加载消息
+                  if (loadingMsg) {
+                    await sender.delMsg(loadingMsg);
+                  }
+                  
+                  // 发送天气信息
+                  await sender.reply(weatherResult);
+                  return true;
+                } 
+                // 备用：调用getWeather方法
+                else if (typeof weatherPlugin.getWeather === 'function') {
+                  console.log(`[智能助手] 调用天气插件的getWeather方法查询: ${city}`);
+                  const weatherResult = await weatherPlugin.getWeather(city);
+                  
+                  // 删除加载消息
+                  if (loadingMsg) {
+                    await sender.delMsg(loadingMsg);
+                  }
+                  
+                  // 发送天气信息
+                  await sender.reply(weatherResult);
+                  return true;
+                } else {
+                  if (loadingMsg) {
+                    await sender.delMsg(loadingMsg);
+                  }
+                  await sender.reply('天气插件未正确导出天气查询方法，无法查询天气。');
+                  return true;
+                }
+              } catch (error) {
+                console.error(`[智能助手] 查询天气出错: ${error.message}`);
+                
+                // 删除加载消息
                 if (loadingMsg) {
                   await sender.delMsg(loadingMsg);
                 }
-                await sender.reply('天气插件未正确导出天气查询方法，无法查询天气。');
+                
+                await sender.reply(`查询天气失败: ${error.message}`);
                 return true;
               }
-            } catch (error) {
-              console.error(`[智能助手] 查询天气出错: ${error.message}`);
-              
-              // 删除加载消息
-              if (loadingMsg) {
-                await sender.delMsg(loadingMsg);
-              }
-              
-              await sender.reply(`查询天气失败: ${error.message}`);
-              return true;
             }
           } else {
             console.error('[智能助手] 天气插件格式不兼容');
@@ -695,6 +778,29 @@ async function initConfig() {
     config = ConfigDB.userConfig;
     console.log('[智能助手] 从Schema读取配置成功');
     
+    // 注册配置更新事件处理器
+    try {
+      const core = global.BncrCore;
+      if (core && typeof core.on === 'function') {
+        // 注册从插件接收配置更新的事件
+        core.on('assistant_config_updated', async (updateData) => {
+          console.log('[智能助手] 收到插件配置更新事件:', Object.keys(updateData));
+          
+          // 合并配置更新
+          if (updateData.weather) {
+            console.log('[智能助手] 更新天气插件配置');
+            config.weather = {...config.weather, ...updateData.weather};
+            await ConfigDB.set(config);
+          }
+          
+          // 可以在这里添加其他插件的配置更新处理
+        });
+        console.log('[智能助手] 已注册配置更新事件处理器');
+      }
+    } catch (eventError) {
+      console.warn('[智能助手] 注册配置更新事件处理器失败:', eventError);
+    }
+    
     // 如果配置为空，尝试从本地文件读取一次
     if (!config || Object.keys(config).length === 0) {
       const configFile = path.join(__dirname, 'config.json');
@@ -773,6 +879,24 @@ async function initConfig() {
     // 确保基本配置项存在
     if (!config.adminUsers) config.adminUsers = '';
     
+    // 确保天气插件配置项完整
+    if (!config.weather) {
+      config.weather = {
+        enable: true,
+        api: 'amap',
+        key: '',
+        defaultCity: '北京',
+        showAIAdvice: false
+      };
+    } else {
+      // 确保所有天气配置项存在
+      if (config.weather.enable === undefined) config.weather.enable = true;
+      if (!config.weather.api) config.weather.api = 'amap';
+      if (!config.weather.key) config.weather.key = '';
+      if (!config.weather.defaultCity) config.weather.defaultCity = '北京';
+      if (config.weather.showAIAdvice === undefined) config.weather.showAIAdvice = false;
+    }
+    
   } catch (err) {
     console.error('[智能助手] 初始化配置失败:', err);
     // 如果Schema方式失败，尝试使用本地文件
@@ -800,7 +924,7 @@ function loadConfigFromFile() {
   return {
     adminUsers: '',
     pluginSettings: {
-      weather: { api: 'amap', key: '', defaultCity: '北京' },
+      weather: { api: 'amap', key: '', defaultCity: '北京', showAIAdvice: false },
       'ai-chat': { defaultModel: 'deepseek' }
     }
   };
@@ -871,6 +995,18 @@ function formatConfig() {
             if (model.model) result += `      📋 模型版本: ${model.model}\n`;
             // 不显示apiKey，保护敏感信息
           });
+        } else if (pluginName === 'weather' && key === 'api') {
+          // 特殊处理天气API类型，提供友好显示
+          let apiDisplay = value;
+          if (value === 'amap') {
+            apiDisplay = '高德地图 (amap)';
+          } else if (value === 'openweather') {
+            apiDisplay = 'OpenWeather (openweather)';
+          }
+          result += `  🔹 ${key}: ${apiDisplay}\n`;
+        } else if (pluginName === 'weather' && key === 'key' && value) {
+          // 特殊处理API密钥，保护敏感信息
+          result += `  🔹 ${key}: ${value.substring(0, 3)}*****\n`;
         } else if (typeof value === 'object' && value !== null) {
           result += `  📊 ${key}: [复合配置]\n`;
         } else {
@@ -933,6 +1069,41 @@ async function handleConfigCommand(sender) {
             config[pluginName] = {};
           }
           
+          // 特殊处理某些插件的特定配置项
+          if (pluginName === 'weather' && key === 'api') {
+            // 验证API类型
+            if (!['amap', 'openweather'].includes(param3)) {
+              await sender.reply(`❌ 无效的天气API类型: ${param3}
+目前支持的API类型:
+- amap: 高德地图天气API
+- openweather: OpenWeather API`);
+              return true;
+            }
+          } else if (pluginName === 'weather' && key === 'showAIAdvice') {
+            // 特殊处理布尔值配置项
+            try {
+              // 尝试转换为布尔值
+              if (['true', '是', '开启', '启用'].includes(param3.toLowerCase())) {
+                config[pluginName][key] = true;
+                await ConfigDB.set(config);
+                await sender.reply(`✅ 成功设置 ${pluginName}.${key} = true (已启用)`);
+                return true;
+              } else if (['false', '否', '关闭', '禁用'].includes(param3.toLowerCase())) {
+                config[pluginName][key] = false;
+                await ConfigDB.set(config);
+                await sender.reply(`✅ 成功设置 ${pluginName}.${key} = false (已禁用)`);
+                return true;
+              } else {
+                await sender.reply(`❌ 无效的值: ${param3}
+请使用 true/false, 是/否, 开启/关闭, 或 启用/禁用`);
+                return true;
+              }
+            } catch (e) {
+              await sender.reply(`❌ 设置布尔值出错: ${e.message}`);
+              return true;
+            }
+          }
+          
           // 尝试解析值
           let value = param3;
           try {
@@ -945,7 +1116,12 @@ async function handleConfigCommand(sender) {
           config[pluginName][key] = value;
           await ConfigDB.set(config);
           
-          await sender.reply(`✅ 成功设置 ${pluginName}.${key} = ${JSON.stringify(value)}`);
+          // 特殊处理API密钥显示
+          if (key === 'key') {
+            await sender.reply(`✅ 成功设置 ${pluginName}.${key} = ${value.substring(0, 3)}*****`);
+          } else {
+            await sender.reply(`✅ 成功设置 ${pluginName}.${key} = ${JSON.stringify(value)}`);
+          }
         } else {
           await sender.reply('❌ 配置路径格式错误，应为 pluginName.key');
         }
@@ -1095,7 +1271,11 @@ async function handleMessageLegacy(sender) {
 /clear - 清除聊天历史
 /model list - 查看可用AI模型
 /model use 模型名 - 切换AI模型
-/config list - 查看个人配置
+/weconfig - 查看配置信息
+/weconfig set weather.api [amap/openweather] - 设置天气API类型
+/weconfig set weather.key [API密钥] - 设置天气API密钥
+/天气配置 - 查看天气插件配置
+/天气配置 api-help - 查看天气API申请指南
 /speedtest - 测试所有AI模型的响应速度
 /speedtest info - 查看测速插件的配置和上次测试结果
 /speedtest config 参数名 参数值 - 配置测速参数(需管理员权限)

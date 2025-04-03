@@ -112,7 +112,9 @@ class WechatAssistantCore extends EventEmitter {
           // 更新管理员用户列表
           if (newConfig.adminUsers) {
             this.config.adminUsers = newConfig.adminUsers;
+            // 重新加载权限管理器配置
             await permissionManager.loadConfig();
+            console.log('[微信助手核心] 已更新管理员用户列表');
           }
           
           // 更新全局配置

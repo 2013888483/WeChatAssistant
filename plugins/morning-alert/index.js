@@ -230,7 +230,21 @@ function initScheduleJob(core) {
 exports.initialize = async function(core, pluginConfig) {
   // 存储core引用和配置
   this.core = core;
-  exports.config = pluginConfig;
+  
+  // 使用传入的pluginConfig，因为它现在应来自Schema
+  exports.config = pluginConfig || this.defaultConfig;
+  
+  // 验证配置的重要字段
+  if (!exports.config.time) {
+    console.warn('[早间提醒] 警告: 提醒时间未配置，使用默认值"07:00"');
+    exports.config.time = "07:00";
+  }
+  
+  if (!exports.config.templates || !exports.config.templates.morning) {
+    console.warn('[早间提醒] 警告: 提醒模板未配置，使用默认模板');
+    exports.config.templates = exports.config.templates || {};
+    exports.config.templates.morning = this.defaultConfig.templates.morning;
+  }
   
   // 加载订阅用户
   loadSubscribedUsers();
@@ -238,7 +252,7 @@ exports.initialize = async function(core, pluginConfig) {
   // 初始化定时任务
   initScheduleJob(core);
   
-  console.log('[早间提醒] 插件已初始化');
+  console.log(`[早间提醒] 插件已初始化，将在每天 ${exports.config.time} 发送提醒`);
   return true;
 };
 
@@ -303,4 +317,26 @@ exports.unload = async function() {
   
   console.log('[早间提醒] 插件已卸载');
   return true;
-}; 
+};
+
+// 保存插件配置
+async function saveConfig(plugin) {
+  try {
+    // 使用BNCR事件系统更新配置
+    if (plugin.core) {
+      await plugin.core.emit('config_updated', { 
+        pluginName: 'morning-alert', 
+        config: exports.config
+      });
+      console.log('[早间提醒] 已通过事件系统更新配置');
+      return true;
+    }
+    
+    // 如果没有core引用，返回失败
+    console.warn('[早间提醒] 未找到core引用，无法保存配置');
+    return false;
+  } catch (error) {
+    console.error('[早间提醒] 保存配置失败:', error);
+    return false;
+  }
+} 

@@ -92,28 +92,57 @@ function getTestableModels(aiConfig, testConfig) {
     return result;
   }
   
-  // 遍历所有AI模型
-  for (const [modelName, modelConfig] of Object.entries(aiConfig.models)) {
-    // 检查模型是否要排除
-    if (excludeModels.includes(modelName)) {
-      console.log(`[AI模型测速] 模型 ${modelName} 在排除列表中，跳过测试`);
-      continue;
+  // 检查是否使用数组格式的模型配置
+  if (Array.isArray(aiConfig.models)) {
+    // 处理数组格式
+    for (const modelConfig of aiConfig.models) {
+      const modelName = modelConfig.id; // 使用id作为模型名称
+      
+      // 检查模型是否要排除
+      if (excludeModels.includes(modelName)) {
+        console.log(`[AI模型测速] 模型 ${modelName} 在排除列表中，跳过测试`);
+        continue;
+      }
+      
+      // 检查模型是否已禁用且需要跳过
+      if (skipDisabled && !(modelConfig.enable || modelConfig.enabled)) {
+        console.log(`[AI模型测速] 模型 ${modelName} 已禁用，跳过测试`);
+        continue;
+      }
+      
+      // 检查模型是否有API密钥
+      if (!modelConfig.apiKey) {
+        console.log(`[AI模型测速] 模型 ${modelName} 未配置API密钥，跳过测试`);
+        continue;
+      }
+      
+      // 添加到可测试模型列表
+      result.push(modelName);
     }
-    
-    // 检查模型是否已禁用且需要跳过
-    if (skipDisabled && !modelConfig.enabled) {
-      console.log(`[AI模型测速] 模型 ${modelName} 已禁用，跳过测试`);
-      continue;
+  } else {
+    // 处理对象格式（旧格式）
+    for (const [modelName, modelConfig] of Object.entries(aiConfig.models)) {
+      // 检查模型是否要排除
+      if (excludeModels.includes(modelName)) {
+        console.log(`[AI模型测速] 模型 ${modelName} 在排除列表中，跳过测试`);
+        continue;
+      }
+      
+      // 检查模型是否已禁用且需要跳过
+      if (skipDisabled && !(modelConfig.enable || modelConfig.enabled)) {
+        console.log(`[AI模型测速] 模型 ${modelName} 已禁用，跳过测试`);
+        continue;
+      }
+      
+      // 检查模型是否有API密钥
+      if (!modelConfig.apiKey) {
+        console.log(`[AI模型测速] 模型 ${modelName} 未配置API密钥，跳过测试`);
+        continue;
+      }
+      
+      // 添加到可测试模型列表
+      result.push(modelName);
     }
-    
-    // 检查模型是否有API密钥
-    if (!modelConfig.apiKey) {
-      console.log(`[AI模型测速] 模型 ${modelName} 未配置API密钥，跳过测试`);
-      continue;
-    }
-    
-    // 添加到可测试模型列表
-    result.push(modelName);
   }
   
   return result;
@@ -182,12 +211,26 @@ exports.runSpeedTest = async function(sender = null) {
       
       // 尝试使用defaultModel创建一个临时模型配置
       if (aiConfig.defaultModel) {
-        aiConfig.models = {
-          [aiConfig.defaultModel]: { 
-            enabled: true,
-            apiKey: '已配置' // 假设已经在内部配置
-          }
-        };
+        // 创建临时模型配置
+        if (Array.isArray(aiConfig.models)) {
+          aiConfig.models = [
+            {
+              id: aiConfig.defaultModel,
+              name: aiConfig.defaultModel,
+              enable: true,
+              enabled: true, // 兼容旧版本
+              apiKey: '已配置' // 假设已经在内部配置
+            }
+          ];
+        } else {
+          aiConfig.models = {
+            [aiConfig.defaultModel]: { 
+              enable: true,
+              enabled: true, // 兼容旧版本
+              apiKey: '已配置' // 假设已经在内部配置
+            }
+          };
+        }
         console.log(`[AI模型测速] 使用默认模型创建临时配置: ${aiConfig.defaultModel}`);
       } else {
         const error = "AI聊天插件缺少模型配置";
@@ -622,4 +665,26 @@ exports.unload = async function() {
   
   console.log('[AI模型测速] 插件已卸载');
   return true;
-}; 
+};
+
+// 保存配置
+async function saveConfig(plugin) {
+  try {
+    // 使用BNCR事件系统更新配置
+    if (plugin.core) {
+      await plugin.core.emit('config_updated', { 
+        pluginName: 'ai-speedtest', 
+        config: plugin.config
+      });
+      console.log('[AI模型测速] 已通过事件系统更新配置');
+      return true;
+    }
+    
+    // 如果没有core引用，返回失败
+    console.warn('[AI模型测速] 未找到core引用，无法保存配置');
+    return false;
+  } catch (error) {
+    console.error('[AI模型测速] 保存配置失败:', error);
+    return false;
+  }
+} 

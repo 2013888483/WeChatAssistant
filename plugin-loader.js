@@ -1,6 +1,6 @@
 /**
  * @author shuaijin
- * @name 微信智能助手插件加载器
+ * @name plugin-loader
  * @team shuaijin
  * @origin bncr
  * @version 1.0.0

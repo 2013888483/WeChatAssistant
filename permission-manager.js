@@ -1,6 +1,6 @@
 /**
  * @name 权限管理模块
- * @description 管理用户权限和访问控制
+ * @description permission-manager
  * @version 1.0.0
  * @author shuaijin
  * @team shuaijin
@@ -17,7 +17,7 @@ class PermissionManager {
   constructor() {
     this.configPath = path.join(__dirname, 'config.json');
     this.config = null;
-    this.adminUsers = [];
+    this.adminUsers = '';
     this.loadConfig();
   }
 
@@ -27,17 +27,33 @@ class PermissionManager {
       if (fs.existsSync(this.configPath)) {
         const configContent = fs.readFileSync(this.configPath, 'utf8');
         this.config = JSON.parse(configContent);
-        this.adminUsers = this.config.adminUsers || [];
-        console.log(`[权限管理] 已加载${this.adminUsers.length}个管理员用户`);
+        
+        // 处理 adminUsers 字段，统一转为字符串格式
+        if (this.config.adminUsers !== undefined) {
+          if (Array.isArray(this.config.adminUsers)) {
+            // 如果是数组，转换为逗号分隔的字符串
+            this.adminUsers = this.config.adminUsers.join(',');
+            // 也更新配置对象，确保保存时是字符串
+            this.config.adminUsers = this.adminUsers;
+          } else if (typeof this.config.adminUsers === 'string') {
+            this.adminUsers = this.config.adminUsers;
+          } else {
+            this.adminUsers = '';
+          }
+        } else {
+          this.adminUsers = '';
+        }
+        
+        console.log(`[权限管理] 已加载管理员用户: ${this.adminUsers || '无'}`);
       } else {
         console.error('[权限管理] 配置文件不存在');
-        this.config = { adminUsers: [] };
-        this.adminUsers = [];
+        this.config = { adminUsers: '' };
+        this.adminUsers = '';
       }
     } catch (error) {
       console.error(`[权限管理] 加载配置失败: ${error.message}`);
-      this.config = { adminUsers: [] };
-      this.adminUsers = [];
+      this.config = { adminUsers: '' };
+      this.adminUsers = '';
     }
   }
 
@@ -49,7 +65,8 @@ class PermissionManager {
       
       // 写入文件
       fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf8');
-      console.log('[权限管理] 配置已保存');
+      
+      console.log(`[权限管理] 配置已保存，管理员用户: ${this.adminUsers || '无'}`);
       return true;
     } catch (error) {
       console.error(`[权限管理] 保存配置失败: ${error.message}`);
@@ -59,7 +76,8 @@ class PermissionManager {
 
   // 检查是否为管理员
   isAdmin(userId) {
-    return this.adminUsers.includes(userId);
+    if (!this.adminUsers) return false;
+    return this.adminUsers.split(',').includes(userId);
   }
 
   // 添加管理员
@@ -68,7 +86,11 @@ class PermissionManager {
       return false; // 已经是管理员
     }
     
-    this.adminUsers.push(userId);
+    if (this.adminUsers) {
+      this.adminUsers += ',' + userId;
+    } else {
+      this.adminUsers = userId;
+    }
     return this.saveConfig();
   }
 
@@ -78,13 +100,14 @@ class PermissionManager {
       return false; // 不是管理员
     }
     
-    this.adminUsers = this.adminUsers.filter(id => id !== userId);
+    const admins = this.adminUsers.split(',').filter(id => id !== userId);
+    this.adminUsers = admins.join(',');
     return this.saveConfig();
   }
 
   // 获取所有管理员
   getAllAdmins() {
-    return [...this.adminUsers];
+    return this.adminUsers ? this.adminUsers.split(',') : [];
   }
 
   // 检查权限

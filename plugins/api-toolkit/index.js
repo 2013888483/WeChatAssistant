@@ -1,480 +1,593 @@
-  /**
-   * @name API工具箱
-   * @version 1.0.0
-   * @description 提供多种API调用功能，支持自定义扩展
-   * @author shuaijin
-   */
+/**
+ * @name API工具箱
+ * @version 1.0.0
+ * @description 提供多种API调用功能，支持自定义扩展
+ * @author shuaijin
+ */
 
-  // 导入模块
-  const axios = require('axios');
-  const fs = require('fs');
-  const path = require('path');
+// 导入模块
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
-  // 插件元数据
-  exports.meta = {
-    name: "API工具箱",
-    version: "1.0.0",
-    description: "提供多种API调用功能，支持自定义扩展",
-    author: "shuaijin"
-  };
+// 插件元数据
+exports.meta = {
+  name: "API工具箱",
+  version: "1.0.0",
+  description: "提供多种API调用功能，支持自定义扩展",
+  author: "shuaijin"
+};
 
-  // 插件配置路径
-  const configPath = path.join(__dirname, 'config.json');
+// 确保主要功能正确导出
+exports.handleAPICommand = handleAPICommand;
+exports.loadConfig = loadConfig;
+exports.generateHelpText = generateHelpText;
+exports.generateAPIListText = generateAPIListText;
 
-  // 加载配置
-  function loadConfig() {
-    try {
-      if (fs.existsSync(configPath)) {
-        const configContent = fs.readFileSync(configPath, 'utf8');
-        return JSON.parse(configContent);
-      }
-      console.error('[API工具箱] 配置文件不存在，使用默认配置');
-      return {
-        enabled: true,
-        commandPrefix: "api",
-        apis: {},
-        rateLimit: {
-          perUser: 10,
-          timeWindow: 60000,
-          enabled: true
-        },
-        cache: {
-          enabled: true,
-          expiry: 3600000
-        }
-      };
-    } catch (error) {
-      console.error('[API工具箱] 加载配置出错:', error);
-      return {
-        enabled: true,
-        commandPrefix: "api",
-        apis: {},
-        rateLimit: {
-          perUser: 10,
-          timeWindow: 60000,
-          enabled: true
-        },
-        cache: {
-          enabled: true,
-          expiry: 3600000
-        }
-      };
+// 添加标记，表明这是正确支持的导出格式
+exports.exportFormat = "object";
+
+// 插件配置路径
+const configPath = path.join(__dirname, 'config.json');
+
+// 加载配置
+function loadConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      return JSON.parse(configContent);
     }
+    console.error('[API工具箱] 配置文件不存在，使用默认配置');
+    return {
+      enabled: true,
+      commandPrefix: "api",
+      apis: {},
+      rateLimit: {
+        perUser: 10,
+        timeWindow: 60000,
+        enabled: true
+      },
+      cache: {
+        enabled: true,
+        expiry: 3600000
+      }
+    };
+  } catch (error) {
+    console.error('[API工具箱] 加载配置出错:', error);
+    return {
+      enabled: true,
+      commandPrefix: "api",
+      apis: {},
+      rateLimit: {
+        perUser: 10,
+        timeWindow: 60000,
+        enabled: true
+      },
+      cache: {
+        enabled: true,
+        expiry: 3600000
+      }
+    };
   }
+}
 
-  // 保存配置
-  function saveConfig(config) {
-    try {
-      const configContent = JSON.stringify(config, null, 2);
-      fs.writeFileSync(configPath, configContent, 'utf8');
+// 保存配置
+async function saveConfig(config, core) {
+  try {
+    // 如果提供了core，使用BNCR事件系统更新配置
+    if (core) {
+      await core.emit('config_updated', { 
+        pluginName: 'api-toolkit', 
+        config: config
+      });
+      console.log('[API工具箱] 已通过事件系统更新配置');
       return true;
-    } catch (error) {
-      console.error('[API工具箱] 保存配置出错:', error);
-      return false;
-    }
-  }
-
-  // 调用API
-  async function callAPI(apiKey, config, userParams = {}) {
-    const apiConfig = config.apis[apiKey];
-    if (!apiConfig || !apiConfig.enabled) {
-      console.error(`[API工具箱] API "${apiKey}" 不存在或已禁用`);
-      return { success: false, message: `API "${apiKey}" 不存在或已禁用` };
     }
     
-    try {
-      console.log(`[API工具箱][调试] =================== API请求开始 ===================`);
-      console.log(`[API工具箱][调试] 调用API "${apiKey}", URL: ${apiConfig.url}`);
-      console.log(`[API工具箱][调试] 请求方法: ${apiConfig.method || 'GET'}`);
-      
-      // 合并配置参数和用户参数（用户参数优先）
-      const apiParams = { ...(apiConfig.params || {}), ...userParams };
-      console.log(`[API工具箱][调试] 合并后的参数:`, JSON.stringify(apiParams));
-      console.log(`[API工具箱][调试] 请求头:`, JSON.stringify(apiConfig.headers || { 'User-Agent': 'WechatAssistant/1.0' }));
-      
-      // 打印完整请求信息
-      const fullUrl = apiConfig.url + 
-        (Object.keys(apiParams).length > 0 ? 
-          `?${Object.entries(apiParams).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}` : 
-          '');
-      console.log(`[API工具箱][调试] 完整URL: ${fullUrl}`);
-      
-      // 发送API请求
-      console.log(`[API工具箱][调试] 开始发送HTTP请求...`);
-      
-      // 构建完整URL与参数，用于调试
-      const requestConfig = {
-        method: apiConfig.method || 'GET',
-        url: apiConfig.url,
-        headers: apiConfig.headers || {
-          'User-Agent': 'WechatAssistant/1.0'
-        },
-        params: apiParams,
-        data: apiConfig.data || {},
-        timeout: 30000 // 30秒超时
-      };
-      
-      // 打印完整的请求配置
-      console.log(`[API工具箱][调试] 完整请求配置:`, JSON.stringify(requestConfig));
-      
-      // 打印axios最终会发送的URL (手动构建用于调试)
-      let finalUrl = apiConfig.url;
-      if (Object.keys(apiParams).length > 0) {
-        const queryString = Object.entries(apiParams)
-          .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-          .join('&');
-        finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
-      }
-      console.log(`[API工具箱][调试] 最终请求URL: ${finalUrl}`);
-      
-      // 发送请求
-      try {
-        console.log(`[API工具箱][调试] 即将发送请求...`);
-        const response = await axios(requestConfig);
-        
-        console.log(`[API工具箱][调试] HTTP请求已完成`);
-        console.log(`[API工具箱][调试] 响应状态码: ${response.status}`);
-        console.log(`[API工具箱][调试] 响应头:`, JSON.stringify(response.headers));
-        
-        // 打印响应数据，但限制长度
-        const responseDataStr = JSON.stringify(response.data);
-        console.log(`[API工具箱][调试] 响应数据: ${responseDataStr.length <= 500 ? responseDataStr : responseDataStr.substring(0, 500) + '... (已截断)'}`);
-        
-        // 处理响应数据
-        return processAPIResponse(response, apiKey, apiConfig);
-      } catch (error) {
-        console.error(`[API工具箱][调试] 发送请求失败: ${error.message}`);
-        
-        if (error.response) {
-          console.error(`[API工具箱][调试] 错误状态: ${error.response.status}`);
-          console.error(`[API工具箱][调试] 错误数据: ${JSON.stringify(error.response.data)}`);
-          
-          return {
-            success: false,
-            message: `API请求失败: 服务器返回 ${error.response.status} 错误`
-          };
-        } else if (error.request) {
-          console.error(`[API工具箱][调试] 请求已发送但未收到响应`);
-          
-          return {
-            success: false,
-            message: `API请求失败: 服务器未响应，可能是网络问题或API服务不可用`
-          };
-        } else {
-          console.error(`[API工具箱][调试] 请求配置错误:`, error.config);
-          
-          return {
-            success: false,
-            message: `API请求失败: ${error.message}`
-          };
-        }
-      }
-    } catch (outerError) {
-      console.error(`[API工具箱][调试] 调用API "${apiKey}" 出错:`, outerError.message);
-      console.log(`[API工具箱][调试] =================== API请求结束 ===================`);
-      return {
-        success: false,
-        message: `API请求异常: ${outerError.message}`
-      };
-    }
+    // 否则使用文件保存配置（兼容模式）
+    const configContent = JSON.stringify(config, null, 2);
+    fs.writeFileSync(configPath, configContent, 'utf8');
+    console.log('[API工具箱] 已保存配置到文件');
+    return true;
+  } catch (error) {
+    console.error('[API工具箱] 保存配置出错:', error);
+    return false;
   }
+}
 
-  // 用户调用频率限制
-  const userRateLimits = new Map();
-
-  // 检查用户是否超出调用限制
-  function checkRateLimit(userId, config) {
-    if (!config.rateLimit.enabled) {
-      return true; // 未启用限制
-    }
+// 调用API
+async function callAPI(apiKey, config, userParams = {}) {
+  const apiConfig = config.apis[apiKey];
+  if (!apiConfig || !apiConfig.enabled) {
+    console.error(`[API工具箱] API "${apiKey}" 不存在或已禁用`);
+    return { success: false, message: `API "${apiKey}" 不存在或已禁用` };
+  }
+  
+  try {
+    console.log(`[API工具箱][调试] =================== API请求开始 ===================`);
+    console.log(`[API工具箱][调试] 调用API "${apiKey}", URL: ${apiConfig.url}`);
+    console.log(`[API工具箱][调试] 请求方法: ${apiConfig.method || 'GET'}`);
     
-    const now = Date.now();
-    const userLimit = userRateLimits.get(userId) || {
-      count: 0,
-      resetTime: now + config.rateLimit.timeWindow
+    // 合并配置参数和用户参数（用户参数优先）
+    const apiParams = { ...(apiConfig.params || {}), ...userParams };
+    console.log(`[API工具箱][调试] 合并后的参数:`, JSON.stringify(apiParams));
+    console.log(`[API工具箱][调试] 请求头:`, JSON.stringify(apiConfig.headers || { 'User-Agent': 'WechatAssistant/1.0' }));
+    
+    // 打印完整请求信息
+    const fullUrl = apiConfig.url + 
+      (Object.keys(apiParams).length > 0 ? 
+        `?${Object.entries(apiParams).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}` : 
+        '');
+    console.log(`[API工具箱][调试] 完整URL: ${fullUrl}`);
+    
+    // 发送API请求
+    console.log(`[API工具箱][调试] 开始发送HTTP请求...`);
+    
+    // 构建完整URL与参数，用于调试
+    const requestConfig = {
+      method: apiConfig.method || 'GET',
+      url: apiConfig.url,
+      headers: apiConfig.headers || {
+        'User-Agent': 'WechatAssistant/1.0'
+      },
+      params: apiParams,
+      data: apiConfig.data || {},
+      timeout: 30000 // 30秒超时
     };
     
-    // 如果重置时间已过，重置计数
-    if (now > userLimit.resetTime) {
-      userLimit.count = 0;
-      userLimit.resetTime = now + config.rateLimit.timeWindow;
+    // 打印完整的请求配置
+    console.log(`[API工具箱][调试] 完整请求配置:`, JSON.stringify(requestConfig));
+    
+    // 打印axios最终会发送的URL (手动构建用于调试)
+    let finalUrl = apiConfig.url;
+    if (Object.keys(apiParams).length > 0) {
+      const queryString = Object.entries(apiParams)
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join('&');
+      finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
     }
+    console.log(`[API工具箱][调试] 最终请求URL: ${finalUrl}`);
     
-    // 检查是否达到限制
-    if (userLimit.count >= config.rateLimit.perUser) {
-      return false;
-    }
-    
-    // 增加计数
-    userLimit.count++;
-    userRateLimits.set(userId, userLimit);
-    return true;
-  }
-
-  // 缓存系统
-  const apiCache = new Map();
-
-  // 验证和修正URL
-  function normalizeMediaUrl(url) {
-    console.log(`[API工具箱] 开始规范化URL: ${url}`);
-    
-    if (!url) {
-      return url;
-    }
-    
-    // 确保URL有协议头
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-      console.log(`[API工具箱] 添加了HTTPS协议头: ${url}`);
-    }
-    
-    // 尝试编码URL中的特殊字符
+    // 发送请求
     try {
-      // 先分解URL，只对路径部分进行编码
-      const urlObj = new URL(url);
+      console.log(`[API工具箱][调试] 即将发送请求...`);
+      const response = await axios(requestConfig);
       
-      // 对路径部分进行处理
-      if (urlObj.pathname) {
-        // 保留正斜杠，但编码其他特殊字符
-        const parts = urlObj.pathname.split('/');
-        const encodedParts = parts.map(part => {
-          if (part) {
-            return encodeURIComponent(part);
-          }
-          return '';
-        });
+      console.log(`[API工具箱][调试] HTTP请求已完成`);
+      console.log(`[API工具箱][调试] 响应状态码: ${response.status}`);
+      console.log(`[API工具箱][调试] 响应头:`, JSON.stringify(response.headers));
+      
+      // 打印响应数据，但限制长度
+      const responseDataStr = JSON.stringify(response.data);
+      console.log(`[API工具箱][调试] 响应数据: ${responseDataStr.length <= 500 ? responseDataStr : responseDataStr.substring(0, 500) + '... (已截断)'}`);
+      
+      // 处理响应数据
+      return processAPIResponse(response, apiKey, apiConfig);
+    } catch (error) {
+      console.error(`[API工具箱][调试] 发送请求失败: ${error.message}`);
+      
+      // 检查是否是常见的API服务故障（特别关注一些常有问题的API）
+      const problematicApis = ['baisi', 'heisi', 'girl', 'girlvideo'];
+      const isKnownProblematicApi = problematicApis.includes(apiKey);
+      
+      if (error.response) {
+        console.error(`[API工具箱][调试] 错误状态: ${error.response.status}`);
+        console.error(`[API工具箱][调试] 错误数据: ${JSON.stringify(error.response.data)}`);
         
-        urlObj.pathname = encodedParts.join('/');
-        console.log(`[API工具箱] 编码了URL路径部分`);
+        // 针对常见故障API提供更详细的错误信息
+        if (isKnownProblematicApi) {
+          return {
+            success: false,
+            message: `无法调用API: ${apiKey}\n可能是API服务器暂时不可用或已关闭，请稍后再试或联系插件作者检查API状态。\n错误详情: 服务器返回 ${error.response.status} 错误`
+          };
+        }
+        
+        return {
+          success: false,
+          message: `API请求失败: 服务器返回 ${error.response.status} 错误`
+        };
+      } else if (error.request) {
+        console.error(`[API工具箱][调试] 请求已发送但未收到响应`);
+        
+        // 针对常见故障API提供更详细的错误信息
+        if (isKnownProblematicApi) {
+          return {
+            success: false,
+            message: `无法调用API: ${apiKey}\n可能是API服务器暂时不可用或已关闭，请稍后再试或联系插件作者检查API状态。\n错误详情: 服务器未响应`
+          };
+        }
+        
+        return {
+          success: false,
+          message: `API请求失败: 服务器未响应，可能是网络问题或API服务不可用`
+        };
+      } else {
+        console.error(`[API工具箱][调试] 请求配置错误:`, error.config);
+        
+        return {
+          success: false,
+          message: `API请求失败: ${error.message}`
+        };
+      }
+    }
+  } catch (outerError) {
+    console.error(`[API工具箱][调试] 调用API "${apiKey}" 出错:`, outerError.message);
+    console.log(`[API工具箱][调试] =================== API请求结束 ===================`);
+    return {
+      success: false,
+      message: `API请求异常: ${outerError.message}`
+    };
+  }
+}
+
+// 用户调用频率限制
+const userRateLimits = new Map();
+
+// 检查用户是否超出调用限制
+function checkRateLimit(userId, config) {
+  if (!config.rateLimit.enabled) {
+    return true; // 未启用限制
+  }
+  
+  const now = Date.now();
+  const userLimit = userRateLimits.get(userId) || {
+    count: 0,
+    resetTime: now + config.rateLimit.timeWindow
+  };
+  
+  // 如果重置时间已过，重置计数
+  if (now > userLimit.resetTime) {
+    userLimit.count = 0;
+    userLimit.resetTime = now + config.rateLimit.timeWindow;
+  }
+  
+  // 检查是否达到限制
+  if (userLimit.count >= config.rateLimit.perUser) {
+    return false;
+  }
+  
+  // 增加计数
+  userLimit.count++;
+  userRateLimits.set(userId, userLimit);
+  return true;
+}
+
+// 缓存系统
+const apiCache = new Map();
+
+// 验证和修正URL
+function normalizeMediaUrl(url) {
+  console.log(`[API工具箱] 开始规范化URL: ${url}`);
+  
+  if (!url) {
+    return url;
+  }
+  
+  // 确保URL有协议头
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+    console.log(`[API工具箱] 添加了HTTPS协议头: ${url}`);
+  }
+  
+  // 尝试编码URL中的特殊字符
+  try {
+    // 先分解URL，只对路径部分进行编码
+    const urlObj = new URL(url);
+    
+    // 对路径部分进行处理
+    if (urlObj.pathname) {
+      // 保留正斜杠，但编码其他特殊字符
+      const parts = urlObj.pathname.split('/');
+      const encodedParts = parts.map(part => {
+        if (part) {
+          return encodeURIComponent(part);
+        }
+        return '';
+      });
+      
+      urlObj.pathname = encodedParts.join('/');
+      console.log(`[API工具箱] 编码了URL路径部分`);
+    }
+    
+    // 从URL对象重建完整URL
+    const normalizedUrl = urlObj.toString();
+    console.log(`[API工具箱] 规范化后的URL: ${normalizedUrl}`);
+    return normalizedUrl;
+  } catch (error) {
+    console.error(`[API工具箱] URL规范化出错: ${error.message}, 使用原始URL`);
+    return url;
+  }
+}
+
+// 尝试使用多种方式发送图片
+async function sendImageWithFallback(sender, imageUrl) {
+  // 规范化URL
+  imageUrl = normalizeMediaUrl(imageUrl);
+  console.log(`[API工具箱] 尝试多种方式发送图片: ${imageUrl}`);
+  
+  // 记录每种尝试方法
+  const attempts = [];
+  
+  // 方法0: 下载图片到临时文件并发送本地图片(最推荐方式，应对格式错误问题)
+  try {
+    attempts.push("下载到临时文件");
+    console.log(`[API工具箱] 尝试下载图片到临时文件`);
+    
+    const axios = require('axios');
+    const fs = require('fs');
+    const path = require('path');
+    
+    // 创建临时目录
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // 下载图片
+    const response = await axios({
+      method: 'GET',
+      url: imageUrl,
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'WechatAssistant/1.0'
+      }
+    });
+    
+    // 保存到临时文件
+    const tempImageFile = path.join(tempDir, `api_image_${Date.now()}.jpg`);
+    fs.writeFileSync(tempImageFile, response.data);
+    console.log(`[API工具箱] 图片已保存到临时文件: ${tempImageFile}`);
+    
+    // 发送本地文件
+    await sender.reply({
+      type: 'image',
+      path: tempImageFile
+    });
+    
+    // 发送完后删除临时文件
+    try {
+      fs.unlinkSync(tempImageFile);
+      console.log(`[API工具箱] 已删除临时文件: ${tempImageFile}`);
+    } catch (unlinkError) {
+      console.error(`[API工具箱] 删除临时文件失败: ${unlinkError.message}`);
+    }
+    
+    console.log(`[API工具箱] 成功使用临时文件方式发送图片`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 临时文件方式发送失败: ${error.message}`);
+  }
+  
+  // 方法1: 使用推荐的对象格式带path属性
+  try {
+    attempts.push("path参数模式");
+    await sender.reply({
+      type: 'image',
+      path: imageUrl,
+      msg: '图片来啦'
+    });
+    console.log(`[API工具箱] 成功使用path参数模式发送图片`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] path参数模式发送失败: ${error.message}`);
+  }
+  
+  // 方法2: 使用兼容的对象格式
+  try {
+    attempts.push("url参数模式");
+    await sender.reply({
+      type: 'image',
+      url: imageUrl
+    });
+    console.log(`[API工具箱] 成功使用url参数模式发送图片`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] url参数模式发送失败: ${error.message}`);
+  }
+  
+  // 方法3: 尝试使用简化对象格式
+  try {
+    attempts.push("简化对象模式");
+    await sender.reply({
+      msg: imageUrl
+    });
+    console.log(`[API工具箱] 成功使用简化对象模式发送图片`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 简化对象模式发送失败: ${error.message}`);
+  }
+  
+  // 方法4: 尝试使用纯字符串URL
+  try {
+    attempts.push("纯字符串URL");
+    await sender.reply(imageUrl);
+    console.log(`[API工具箱] 成功使用纯字符串URL发送图片`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 纯字符串URL发送失败: ${error.message}`);
+  }
+  
+  // 方法5: 最终回退 - 发送文本形式
+  try {
+    attempts.push("文本消息格式");
+    await sender.reply({
+      type: 'text',
+      msg: `图片地址: ${imageUrl}`
+    });
+    console.log(`[API工具箱] 成功使用文本消息格式发送图片URL`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 文本消息格式发送失败: ${error.message}`);
+  }
+  
+  // 所有方法都失败，发送失败信息和图片URL
+  console.error(`[API工具箱] 所有图片发送方法都失败: ${attempts.join(', ')}`);
+  try {
+    await sender.reply(`❌ 无法直接发送图片，请使用此链接查看: ${imageUrl}`);
+  } catch (finalError) {
+    console.error(`[API工具箱] 最终错误通知也失败: ${finalError.message}`);
+  }
+  
+  return false;
+}
+
+// 尝试使用多种方式发送视频
+async function sendVideoWithFallback(sender, videoUrl) {
+  // 规范化URL
+  videoUrl = normalizeMediaUrl(videoUrl);
+  console.log(`[API工具箱] 尝试多种方式发送视频: ${videoUrl}`);
+  
+  // 记录每种尝试方法
+  const attempts = [];
+  
+  // 方法1: 使用推荐的对象格式带path属性
+  try {
+    attempts.push("path参数模式");
+    await sender.reply({
+      type: 'video',
+      path: videoUrl,
+      msg: '视频来啦'
+    });
+    console.log(`[API工具箱] 成功使用path参数模式发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] path参数模式发送失败: ${error.message}`);
+  }
+  
+  // 方法2: 使用内置的sendVideo方法
+  try {
+    attempts.push("sendVideo方法");
+    await sender.sendVideo(videoUrl);
+    console.log(`[API工具箱] 成功使用sendVideo方法发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] sendVideo方法发送失败: ${error.message}`);
+  }
+  
+  // 方法3: 使用兼容的对象格式带url属性
+  try {
+    attempts.push("url参数模式");
+    await sender.reply({
+      type: 'video',
+      url: videoUrl
+    });
+    console.log(`[API工具箱] 成功使用url参数模式发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] url参数模式发送失败: ${error.message}`);
+  }
+  
+  // 方法4: 使用简化对象格式
+  try {
+    attempts.push("简化对象模式");
+    await sender.reply({
+      msg: videoUrl,
+      type: 'video'
+    });
+    console.log(`[API工具箱] 成功使用简化对象模式发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 简化对象模式发送失败: ${error.message}`);
+  }
+  
+  // 方法5: 尝试使用通用回复直接发送URL，依靠框架自动识别
+  try {
+    attempts.push("直接URL模式");
+    await sender.reply(videoUrl);
+    console.log(`[API工具箱] 成功使用直接URL模式发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] 直接URL模式发送失败: ${error.message}`);
+  }
+  
+  // 方法6: 使用XML格式特殊消息
+  try {
+    attempts.push("XML特殊消息");
+    const xmlMsg = `<msg><video url="${videoUrl}"/></msg>`;
+    await sender.reply({
+      type: 'xml',
+      msg: xmlMsg
+    });
+    console.log(`[API工具箱] 成功使用XML特殊消息格式发送视频`);
+    return true;
+  } catch (error) {
+    console.error(`[API工具箱] XML特殊消息格式发送失败: ${error.message}`);
+  }
+  
+  // 所有方法都失败，发送失败信息和视频URL
+  console.error(`[API工具箱] 所有视频发送方法都失败: ${attempts.join(', ')}`);
+  try {
+    await sender.reply(`⚠️ 无法直接播放视频，请点击链接查看: ${videoUrl}`);
+  } catch (finalError) {
+    console.error(`[API工具箱] 最终错误通知也失败: ${finalError.message}`);
+  }
+  
+  return false;
+}
+
+// 从缓存获取结果，若无则调用API并缓存
+async function getAPIWithCache(apiKey, userId, config, userParams = {}) {
+  // 获取API配置
+  const apiConfig = config.apis[apiKey];
+  
+  // 如果有用户参数，或缓存已禁用，或是图片/视频类型API，禁用缓存
+  const isMediaType = apiConfig && (apiConfig.type === 'image' || apiConfig.type === 'video');
+  
+  // 对于图片类API，每次添加一个随机参数以避免获取相同的图片
+  if (isMediaType) {
+    // 添加随机时间戳参数
+    userParams._t = Date.now();
+    // 添加随机数参数
+    userParams._r = Math.floor(Math.random() * 10000000);
+    
+    console.log(`[API工具箱] 媒体类型API(${apiKey})添加随机参数防止缓存: _t=${userParams._t}, _r=${userParams._r}`);
+  }
+  
+  if (Object.keys(userParams).length > 0 || !config.cache.enabled || isMediaType) {
+    const reason = Object.keys(userParams).length > 0 
+      ? '存在用户参数' 
+      : !config.cache.enabled 
+        ? '缓存已禁用' 
+        : '媒体类型API不缓存';
+        
+    console.log(`[API工具箱] ${reason}，直接调用API ${apiKey}`);
+    try {
+      // 调用API并捕获可能的错误
+      const result = await callAPI(apiKey, config, userParams);
+      return result;
+    } catch (error) {
+      console.error(`[API工具箱] API调用失败(${apiKey}): ${error.message}`);
+      
+      // 对于经常出问题的特定API提供更详细的错误信息
+      const problemApis = ['baisi', 'heisi', 'meitui', 'girl', 'girlvideo'];
+      if (problemApis.includes(apiKey)) {
+        return {
+          success: false,
+          message: `无法调用API: ${apiKey}\n可能原因：\n1. API服务器可能已关闭或暂时不可用\n2. 您的网络连接可能存在问题\n3. API接口可能已经更改\n\n请尝试：\n- 稍后再试\n- 使用 /api list 查看其他可用API\n- 联系管理员更新API配置`
+        };
       }
       
-      // 从URL对象重建完整URL
-      const normalizedUrl = urlObj.toString();
-      console.log(`[API工具箱] 规范化后的URL: ${normalizedUrl}`);
-      return normalizedUrl;
-    } catch (error) {
-      console.error(`[API工具箱] URL规范化出错: ${error.message}, 使用原始URL`);
-      return url;
+      return {
+        success: false,
+        message: `API调用失败: ${error.message}`
+      };
     }
   }
-
-  // 尝试使用多种方式发送图片
-  async function sendImageWithFallback(sender, imageUrl) {
-    // 规范化URL
-    imageUrl = normalizeMediaUrl(imageUrl);
-    console.log(`[API工具箱] 尝试多种方式发送图片: ${imageUrl}`);
-    
-    // 记录每种尝试方法
-    const attempts = [];
-    
-    // 方法1: 使用推荐的对象格式带path属性
-    try {
-      attempts.push("path参数模式");
-      await sender.reply({
-        type: 'image',
-        path: imageUrl,
-        msg: '图片来啦'
-      });
-      console.log(`[API工具箱] 成功使用path参数模式发送图片`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] path参数模式发送失败: ${error.message}`);
-    }
-    
-    // 方法2: 使用兼容的对象格式
-    try {
-      attempts.push("url参数模式");
-      await sender.reply({
-        type: 'image',
-        url: imageUrl
-      });
-      console.log(`[API工具箱] 成功使用url参数模式发送图片`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] url参数模式发送失败: ${error.message}`);
-    }
-    
-    // 方法3: 尝试使用简化对象格式
-    try {
-      attempts.push("简化对象模式");
-      await sender.reply({
-        msg: imageUrl
-      });
-      console.log(`[API工具箱] 成功使用简化对象模式发送图片`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] 简化对象模式发送失败: ${error.message}`);
-    }
-    
-    // 方法4: 尝试使用纯字符串URL
-    try {
-      attempts.push("纯字符串URL");
-      await sender.reply(imageUrl);
-      console.log(`[API工具箱] 成功使用纯字符串URL发送图片`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] 纯字符串URL发送失败: ${error.message}`);
-    }
-    
-    // 方法5: 最终回退 - 发送文本形式
-    try {
-      attempts.push("文本消息格式");
-      await sender.reply({
-        type: 'text',
-        msg: `图片地址: ${imageUrl}`
-      });
-      console.log(`[API工具箱] 成功使用文本消息格式发送图片URL`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] 文本消息格式发送失败: ${error.message}`);
-    }
-    
-    // 所有方法都失败，发送失败信息和图片URL
-    console.error(`[API工具箱] 所有图片发送方法都失败: ${attempts.join(', ')}`);
-    try {
-      await sender.reply(`❌ 无法直接发送图片，请使用此链接查看: ${imageUrl}`);
-    } catch (finalError) {
-      console.error(`[API工具箱] 最终错误通知也失败: ${finalError.message}`);
-    }
-    
-    return false;
+  
+  const cacheKey = `${apiKey}-${userId}`;
+  const cached = apiCache.get(cacheKey);
+  
+  // 检查缓存是否有效
+  if (cached && cached.expiry > Date.now()) {
+    console.log(`[API工具箱] 使用缓存的API ${apiKey} 结果`);
+    return cached.data;
   }
-
-  // 尝试使用多种方式发送视频
-  async function sendVideoWithFallback(sender, videoUrl) {
-    // 规范化URL
-    videoUrl = normalizeMediaUrl(videoUrl);
-    console.log(`[API工具箱] 尝试多种方式发送视频: ${videoUrl}`);
-    
-    // 记录每种尝试方法
-    const attempts = [];
-    
-    // 方法1: 使用推荐的对象格式带path属性
-    try {
-      attempts.push("path参数模式");
-      await sender.reply({
-        type: 'video',
-        path: videoUrl,
-        msg: '视频来啦'
-      });
-      console.log(`[API工具箱] 成功使用path参数模式发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] path参数模式发送失败: ${error.message}`);
-    }
-    
-    // 方法2: 使用内置的sendVideo方法
-    try {
-      attempts.push("sendVideo方法");
-      await sender.sendVideo(videoUrl);
-      console.log(`[API工具箱] 成功使用sendVideo方法发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] sendVideo方法发送失败: ${error.message}`);
-    }
-    
-    // 方法3: 使用兼容的对象格式带url属性
-    try {
-      attempts.push("url参数模式");
-      await sender.reply({
-        type: 'video',
-        url: videoUrl
-      });
-      console.log(`[API工具箱] 成功使用url参数模式发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] url参数模式发送失败: ${error.message}`);
-    }
-    
-    // 方法4: 使用简化对象格式
-    try {
-      attempts.push("简化对象模式");
-      await sender.reply({
-        msg: videoUrl,
-        type: 'video'
-      });
-      console.log(`[API工具箱] 成功使用简化对象模式发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] 简化对象模式发送失败: ${error.message}`);
-    }
-    
-    // 方法5: 尝试使用通用回复直接发送URL，依靠框架自动识别
-    try {
-      attempts.push("直接URL模式");
-      await sender.reply(videoUrl);
-      console.log(`[API工具箱] 成功使用直接URL模式发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] 直接URL模式发送失败: ${error.message}`);
-    }
-    
-    // 方法6: 使用XML格式特殊消息
-    try {
-      attempts.push("XML特殊消息");
-      const xmlMsg = `<msg><video url="${videoUrl}"/></msg>`;
-      await sender.reply({
-        type: 'xml',
-        msg: xmlMsg
-      });
-      console.log(`[API工具箱] 成功使用XML特殊消息格式发送视频`);
-      return true;
-    } catch (error) {
-      console.error(`[API工具箱] XML特殊消息格式发送失败: ${error.message}`);
-    }
-    
-    // 所有方法都失败，发送失败信息和视频URL
-    console.error(`[API工具箱] 所有视频发送方法都失败: ${attempts.join(', ')}`);
-    try {
-      await sender.reply(`⚠️ 无法直接播放视频，请点击链接查看: ${videoUrl}`);
-    } catch (finalError) {
-      console.error(`[API工具箱] 最终错误通知也失败: ${finalError.message}`);
-    }
-    
-    return false;
-  }
-
-  // 从缓存获取结果，若无则调用API并缓存
-  async function getAPIWithCache(apiKey, userId, config, userParams = {}) {
-    // 获取API配置
-    const apiConfig = config.apis[apiKey];
-    
-    // 如果有用户参数，或缓存已禁用，或是图片/视频类型API，禁用缓存
-    const isMediaType = apiConfig && (apiConfig.type === 'image' || apiConfig.type === 'video');
-    
-    // 对于图片类API，每次添加一个随机参数以避免获取相同的图片
-    if (isMediaType) {
-      // 添加随机时间戳参数
-      userParams._t = Date.now();
-      // 添加随机数参数
-      userParams._r = Math.floor(Math.random() * 10000000);
-      
-      console.log(`[API工具箱] 媒体类型API(${apiKey})添加随机参数防止缓存: _t=${userParams._t}, _r=${userParams._r}`);
-    }
-    
-    if (Object.keys(userParams).length > 0 || !config.cache.enabled || isMediaType) {
-      const reason = Object.keys(userParams).length > 0 
-        ? '存在用户参数' 
-        : !config.cache.enabled 
-          ? '缓存已禁用' 
-          : '媒体类型API不缓存';
-          
-      console.log(`[API工具箱] ${reason}，直接调用API ${apiKey}`);
-      return await callAPI(apiKey, config, userParams);
-    }
-    
-    const cacheKey = `${apiKey}-${userId}`;
-    const cached = apiCache.get(cacheKey);
-    
-    // 检查缓存是否有效
-    if (cached && cached.expiry > Date.now()) {
-      console.log(`[API工具箱] 使用缓存的API ${apiKey} 结果`);
-      return cached.data;
-    }
-    
-    console.log(`[API工具箱] 缓存未命中或已过期，调用API ${apiKey}`);
-    
-    // 调用API
+  
+  console.log(`[API工具箱] 缓存未命中或已过期，调用API ${apiKey}`);
+  
+  // 调用API
+  try {
     const result = await callAPI(apiKey, config, userParams);
     
     // 缓存结果
@@ -487,1051 +600,1093 @@
     }
     
     return result;
-  }
-
-  // 清理过期缓存
-  function cleanExpiredCache() {
-    const now = Date.now();
+  } catch (error) {
+    console.error(`[API工具箱] API缓存调用失败(${apiKey}): ${error.message}`);
     
-    for (const [key, value] of apiCache.entries()) {
-      if (value.expiry < now) {
-        apiCache.delete(key);
+    // 对于经常出问题的特定API提供更详细的错误信息
+    const problemApis = ['baisi', 'heisi', 'meitui', 'girl', 'girlvideo'];
+    if (problemApis.includes(apiKey)) {
+      return {
+        success: false,
+        message: `无法调用API: ${apiKey}\n可能原因：\n1. API服务器可能已关闭或暂时不可用\n2. 您的网络连接可能存在问题\n3. API接口可能已经更改\n\n请尝试：\n- 稍后再试\n- 使用 /api list 查看其他可用API\n- 联系管理员更新API配置`
+      };
+    }
+    
+    return {
+      success: false,
+      message: `API调用失败: ${error.message}`
+    };
+  }
+}
+
+// 清理过期缓存
+function cleanExpiredCache() {
+  const now = Date.now();
+  
+  for (const [key, value] of apiCache.entries()) {
+    if (value.expiry < now) {
+      apiCache.delete(key);
+    }
+  }
+}
+
+// 获取可用API列表
+function getAPIList(config) {
+  const apiList = [];
+  
+  for (const [key, api] of Object.entries(config.apis)) {
+    if (api.enabled) {
+      apiList.push({
+        key,
+        name: api.name,
+        description: api.description,
+        type: api.type
+      });
+    }
+  }
+  
+  return apiList;
+}
+
+// 解析命令参数
+function parseCommandParams(paramsString) {
+  if (!paramsString || paramsString.trim() === '') {
+    return {};
+  }
+  
+  const params = {};
+  try {
+    // 尝试解析JSON格式参数 {"key":"value", "key2":"value2"}
+    if (paramsString.trim().startsWith('{') && paramsString.trim().endsWith('}')) {
+      return JSON.parse(paramsString);
+    }
+    
+    // 解析键值对格式 key=value&key2=value2
+    const pairs = paramsString.split('&');
+    for (const pair of pairs) {
+      const [key, value] = pair.split('=');
+      if (key && value) {
+        params[key.trim()] = value.trim();
+      }
+    }
+  } catch (error) {
+    console.error(`[API工具箱] 解析参数出错:`, error);
+  }
+  
+  return params;
+}
+
+// 规范化API键名，处理大小写和特殊字符问题
+function normalizeApiKey(apiKey, config) {
+  console.log(`[API工具箱][调试] 规范化API键，原始值: "${apiKey}"`);
+  
+  if (!apiKey) {
+    console.log(`[API工具箱][调试] API键为空或undefined`);
+    return apiKey;
+  }
+  
+  // 原始输入的键名
+  const originalKey = apiKey;
+  
+  // 转换为小写进行比较
+  const lowerApiKey = apiKey.toLowerCase();
+  
+  // 1. 准确匹配（区分大小写）
+  if (config.apis[apiKey]) {
+    console.log(`[API工具箱][调试] 找到精确匹配(区分大小写): "${apiKey}"`);
+    return apiKey;
+  }
+  
+  // 2. 准确匹配（不区分大小写）
+  const exactMatchKey = Object.keys(config.apis).find(key => 
+    key.toLowerCase() === lowerApiKey);
+  
+  if (exactMatchKey) {
+    console.log(`[API工具箱][调试] 找到精确匹配(不区分大小写): "${exactMatchKey}"`);
+    return exactMatchKey;
+  }
+  
+  // 3. 直接检查常见API名称
+  const commonApis = ['acg-pc', 'acg-wap', '4k-acg', '4k-wallpaper'];
+  for (const commonApi of commonApis) {
+    if (lowerApiKey === commonApi.toLowerCase()) {
+      const matchKey = Object.keys(config.apis).find(key => 
+        key.toLowerCase() === commonApi.toLowerCase());
+      if (matchKey) {
+        console.log(`[API工具箱][调试] 匹配常见API: "${matchKey}"`);
+        return matchKey;
       }
     }
   }
-
-  // 获取可用API列表
-  function getAPIList(config) {
-    const apiList = [];
+  
+  // 4. 处理连字符问题
+  if (apiKey.includes('-')) {
+    console.log(`[API工具箱][调试] API键包含连字符，尝试特殊处理`);
     
-    for (const [key, api] of Object.entries(config.apis)) {
-      if (api.enabled) {
-        apiList.push({
-          key,
-          name: api.name,
-          description: api.description,
-          type: api.type
+    // 4.1 直接匹配配置中的键
+    const hyphenKeys = Object.keys(config.apis).filter(key => key.includes('-'));
+    for (const key of hyphenKeys) {
+      if (key.toLowerCase() === lowerApiKey) {
+        console.log(`[API工具箱][调试] 找到连字符精确匹配: "${key}"`);
+        return key;
+      }
+    }
+    
+    // 4.2 尝试部分匹配
+    const parts = apiKey.split('-');
+    if (parts.length === 2) {
+      const [prefix, suffix] = parts;
+      
+      // 查找同前缀的键
+      const prefixMatches = Object.keys(config.apis).filter(key => 
+        key.toLowerCase().startsWith(prefix.toLowerCase() + '-'));
+      
+      if (prefixMatches.length > 0) {
+        console.log(`[API工具箱][调试] 找到前缀匹配: ${prefixMatches.join(', ')}`);
+        
+        // 在前缀匹配中查找后缀匹配
+        const fullMatch = prefixMatches.find(key => {
+          const keyParts = key.split('-');
+          return keyParts.length === 2 && keyParts[1].toLowerCase() === suffix.toLowerCase();
         });
+        
+        if (fullMatch) {
+          console.log(`[API工具箱][调试] 找到完整的前缀-后缀匹配: "${fullMatch}"`);
+          return fullMatch;
+        }
+        
+        // 如果没有完全匹配，返回第一个前缀匹配
+        console.log(`[API工具箱][调试] 使用第一个前缀匹配: "${prefixMatches[0]}"`);
+        return prefixMatches[0];
       }
     }
-    
-    return apiList;
+  }
+  
+  // 5. 尝试查找没有连字符的变体
+  const keyWithoutHyphen = apiKey.replace(/-/g, '');
+  const matchWithoutHyphen = Object.keys(config.apis).find(key => 
+    key.toLowerCase() === keyWithoutHyphen.toLowerCase());
+  
+  if (matchWithoutHyphen) {
+    console.log(`[API工具箱][调试] 找到无连字符匹配: "${matchWithoutHyphen}"`);
+    return matchWithoutHyphen;
+  }
+  
+  // 6. 模糊匹配 - 检查是否是一个API的前缀
+  const possiblePrefixMatch = Object.keys(config.apis).find(key => 
+    key.toLowerCase().startsWith(lowerApiKey) || 
+    (key.includes('-') && key.split('-')[0].toLowerCase() === lowerApiKey));
+  
+  if (possiblePrefixMatch) {
+    console.log(`[API工具箱][调试] 找到前缀匹配: "${possiblePrefixMatch}"`);
+    return possiblePrefixMatch;
+  }
+  
+  // 7. 最后尝试查找部分匹配
+  const partialMatches = Object.keys(config.apis).filter(key => 
+    key.toLowerCase().includes(lowerApiKey) || 
+    lowerApiKey.includes(key.toLowerCase()));
+  
+  if (partialMatches.length > 0) {
+    console.log(`[API工具箱][调试] 找到部分匹配: "${partialMatches[0]}"`);
+    return partialMatches[0];
+  }
+  
+  // 如果所有匹配都失败，返回原始键
+  console.log(`[API工具箱][调试] 未找到匹配，使用原始键: "${originalKey}"`);
+  return originalKey;
+}
+
+// 处理API命令
+async function handleAPICommand(apiKey, sender, config, paramsString = '') {
+  const userId = sender.getUserId();
+  
+  // 配置完整性检查
+  if (!config) {
+    console.error(`[API工具箱][调试] 配置对象为空`);
+    await sender.reply(`❌ 系统错误: 配置加载失败，请联系管理员。`);
+    return false;
+  }
+  
+  if (!config.apis) {
+    console.error(`[API工具箱][调试] 配置对象中没有apis属性`);
+    await sender.reply(`❌ 系统错误: 配置格式不正确，请联系管理员。`);
+    return false;
+  }
+  
+  console.log(`[API工具箱][调试] 配置检查通过，可用API: ${Object.keys(config.apis).join(', ')}`);
+  console.log(`[API工具箱][调试] 请求调用API: ${apiKey}`);
+  
+  // 规范化API键名
+  const normalizedApiKey = normalizeApiKey(apiKey, config);
+  console.log(`[API工具箱][调试] 规范化后的API键: ${normalizedApiKey}`);
+  
+  // 从配置中获取API
+  if (!normalizedApiKey || !config.apis[normalizedApiKey]) {
+    console.log(`[API工具箱][调试] API ${apiKey} 未找到，尝试展示帮助信息`);
+    // API不存在，展示帮助信息
+    if (apiKey === 'help' || apiKey === '?' || apiKey === 'list') {
+      sender.reply(generateAPIListText(config));
+      return true;
+    }
+    await sender.reply(`❌ API "${apiKey}" 不存在或已禁用。\n请使用 /${config.commandPrefix} help 查看可用API列表`);
+    return false;
+  }
+  
+  // API存在，检查是否启用
+  const apiConfig = config.apis[normalizedApiKey];
+  if (!apiConfig.enabled) {
+    await sender.reply(`❌ API "${normalizedApiKey}" 已禁用。`);
+    return false;
   }
 
-  // 解析命令参数
-  function parseCommandParams(paramsString) {
-    if (!paramsString || paramsString.trim() === '') {
-      return {};
-    }
+  // 检查API配置是否完整
+  if (!apiConfig.url) {
+    console.error(`[API工具箱][调试] API ${normalizedApiKey} 配置中缺少URL`);
+    await sender.reply(`❌ API "${normalizedApiKey}" 配置不完整，缺少URL。请联系管理员修复配置。`);
+    return false;
+  }
+
+  console.log(`[API工具箱] 收到API请求: ${normalizedApiKey}, 用户ID: ${userId}, URL: ${apiConfig.url}`);
+  
+  // 检查调用频率限制
+  if (!checkRateLimit(userId, config)) {
+    const timeLeft = Math.ceil((userRateLimits.get(userId).resetTime - Date.now()) / 1000);
+    await sender.reply(`⏱️ 您的API调用太频繁，请在${timeLeft}秒后再试。`);
+    return false;
+  }
+  
+  // 对于特殊的聚合热搜API，直接在这里处理，不进行HTTP请求
+  if (normalizedApiKey === 'allhot' || normalizedApiKey === 'hot') {
+    // 发送加载中消息
+    let loadingMsg = await sender.reply(`⏳ 正在聚合热搜数据，请稍候...`);
     
-    const params = {};
     try {
-      // 尝试解析JSON格式参数 {"key":"value", "key2":"value2"}
-      if (paramsString.trim().startsWith('{') && paramsString.trim().endsWith('}')) {
-        return JSON.parse(paramsString);
-      }
+      // 热搜API列表
+      const hotSearchApis = ['weibohot', 'douyinhot', 'baiduhot', 'bilibilihot'];
+      let allResults = [];
+      let failedApis = [];
       
-      // 解析键值对格式 key=value&key2=value2
-      const pairs = paramsString.split('&');
-      for (const pair of pairs) {
-        const [key, value] = pair.split('=');
-        if (key && value) {
-          params[key.trim()] = value.trim();
-        }
-      }
-    } catch (error) {
-      console.error(`[API工具箱] 解析参数出错:`, error);
-    }
-    
-    return params;
-  }
-
-  // 规范化API键名，处理大小写和特殊字符问题
-  function normalizeApiKey(apiKey, config) {
-    console.log(`[API工具箱][调试] 规范化API键，原始值: "${apiKey}"`);
-    
-    if (!apiKey) {
-      console.log(`[API工具箱][调试] API键为空或undefined`);
-      return apiKey;
-    }
-    
-    // 原始输入的键名
-    const originalKey = apiKey;
-    
-    // 转换为小写进行比较
-    const lowerApiKey = apiKey.toLowerCase();
-    
-    // 1. 准确匹配（区分大小写）
-    if (config.apis[apiKey]) {
-      console.log(`[API工具箱][调试] 找到精确匹配(区分大小写): "${apiKey}"`);
-      return apiKey;
-    }
-    
-    // 2. 准确匹配（不区分大小写）
-    const exactMatchKey = Object.keys(config.apis).find(key => 
-      key.toLowerCase() === lowerApiKey);
-    
-    if (exactMatchKey) {
-      console.log(`[API工具箱][调试] 找到精确匹配(不区分大小写): "${exactMatchKey}"`);
-      return exactMatchKey;
-    }
-    
-    // 3. 直接检查常见API名称
-    const commonApis = ['acg-pc', 'acg-wap', '4k-acg', '4k-wallpaper'];
-    for (const commonApi of commonApis) {
-      if (lowerApiKey === commonApi.toLowerCase()) {
-        const matchKey = Object.keys(config.apis).find(key => 
-          key.toLowerCase() === commonApi.toLowerCase());
-        if (matchKey) {
-          console.log(`[API工具箱][调试] 匹配常见API: "${matchKey}"`);
-          return matchKey;
-        }
-      }
-    }
-    
-    // 4. 处理连字符问题
-    if (apiKey.includes('-')) {
-      console.log(`[API工具箱][调试] API键包含连字符，尝试特殊处理`);
-      
-      // 4.1 直接匹配配置中的键
-      const hyphenKeys = Object.keys(config.apis).filter(key => key.includes('-'));
-      for (const key of hyphenKeys) {
-        if (key.toLowerCase() === lowerApiKey) {
-          console.log(`[API工具箱][调试] 找到连字符精确匹配: "${key}"`);
-          return key;
-        }
-      }
-      
-      // 4.2 尝试部分匹配
-      const parts = apiKey.split('-');
-      if (parts.length === 2) {
-        const [prefix, suffix] = parts;
-        
-        // 查找同前缀的键
-        const prefixMatches = Object.keys(config.apis).filter(key => 
-          key.toLowerCase().startsWith(prefix.toLowerCase() + '-'));
-        
-        if (prefixMatches.length > 0) {
-          console.log(`[API工具箱][调试] 找到前缀匹配: ${prefixMatches.join(', ')}`);
-          
-          // 在前缀匹配中查找后缀匹配
-          const fullMatch = prefixMatches.find(key => {
-            const keyParts = key.split('-');
-            return keyParts.length === 2 && keyParts[1].toLowerCase() === suffix.toLowerCase();
-          });
-          
-          if (fullMatch) {
-            console.log(`[API工具箱][调试] 找到完整的前缀-后缀匹配: "${fullMatch}"`);
-            return fullMatch;
-          }
-          
-          // 如果没有完全匹配，返回第一个前缀匹配
-          console.log(`[API工具箱][调试] 使用第一个前缀匹配: "${prefixMatches[0]}"`);
-          return prefixMatches[0];
-        }
-      }
-    }
-    
-    // 5. 尝试查找没有连字符的变体
-    const keyWithoutHyphen = apiKey.replace(/-/g, '');
-    const matchWithoutHyphen = Object.keys(config.apis).find(key => 
-      key.toLowerCase() === keyWithoutHyphen.toLowerCase());
-    
-    if (matchWithoutHyphen) {
-      console.log(`[API工具箱][调试] 找到无连字符匹配: "${matchWithoutHyphen}"`);
-      return matchWithoutHyphen;
-    }
-    
-    // 6. 模糊匹配 - 检查是否是一个API的前缀
-    const possiblePrefixMatch = Object.keys(config.apis).find(key => 
-      key.toLowerCase().startsWith(lowerApiKey) || 
-      (key.includes('-') && key.split('-')[0].toLowerCase() === lowerApiKey));
-    
-    if (possiblePrefixMatch) {
-      console.log(`[API工具箱][调试] 找到前缀匹配: "${possiblePrefixMatch}"`);
-      return possiblePrefixMatch;
-    }
-    
-    // 7. 最后尝试查找部分匹配
-    const partialMatches = Object.keys(config.apis).filter(key => 
-      key.toLowerCase().includes(lowerApiKey) || 
-      lowerApiKey.includes(key.toLowerCase()));
-    
-    if (partialMatches.length > 0) {
-      console.log(`[API工具箱][调试] 找到部分匹配: "${partialMatches[0]}"`);
-      return partialMatches[0];
-    }
-    
-    // 如果所有匹配都失败，返回原始键
-    console.log(`[API工具箱][调试] 未找到匹配，使用原始键: "${originalKey}"`);
-    return originalKey;
-  }
-
-  // 处理API命令
-  async function handleAPICommand(apiKey, sender, config, paramsString = '') {
-    const userId = sender.getUserId();
-    
-    // 规范化API键名
-    const normalizedApiKey = normalizeApiKey(apiKey, config);
-    
-    // 从配置中获取API
-    if (!normalizedApiKey || !config.apis[normalizedApiKey]) {
-      console.log(`[API工具箱] API ${apiKey} 未找到，尝试展示帮助信息`);
-      // API不存在，展示帮助信息
-      if (apiKey === 'help' || apiKey === '?' || apiKey === 'list') {
-        sender.reply(generateAPIListText(config));
-        return true;
-      }
-      await sender.reply(`❌ API "${apiKey}" 不存在或已禁用。\n请使用 /${config.commandPrefix} help 查看可用API列表`);
-      return false;
-    }
-    
-    // API存在，检查是否启用
-    const apiConfig = config.apis[normalizedApiKey];
-    if (!apiConfig.enabled) {
-      await sender.reply(`❌ API "${normalizedApiKey}" 已禁用。`);
-      return false;
-    }
-
-    console.log(`[API工具箱] 收到API请求: ${normalizedApiKey}, 用户ID: ${userId}`);
-    
-    // 检查调用频率限制
-    if (!checkRateLimit(userId, config)) {
-      const timeLeft = Math.ceil((userRateLimits.get(userId).resetTime - Date.now()) / 1000);
-      await sender.reply(`⏱️ 您的API调用太频繁，请在${timeLeft}秒后再试。`);
-      return false;
-    }
-    
-    // 对于特殊的聚合热搜API，直接在这里处理，不进行HTTP请求
-    if (normalizedApiKey === 'allhot' || normalizedApiKey === 'hot') {
-      // 发送加载中消息
-      let loadingMsg = await sender.reply(`⏳ 正在聚合热搜数据，请稍候...`);
-      
-      try {
-        // 热搜API列表
-        const hotSearchApis = ['weibohot', 'douyinhot', 'baiduhot', 'bilibilihot'];
-        let allResults = [];
-        let failedApis = [];
-        
-        // 并行获取所有热搜API数据
-        const promises = hotSearchApis.map(async (api) => {
-          try {
-            if (config.apis[api]) {
-              const result = await getAPIWithCache(api, userId, config, {});
-              if (result.success && result.data) {
-                return {
-                  api: api,
-                  data: result.data
-                };
-              } else {
-                failedApis.push(api);
-                return null;
-              }
+      // 并行获取所有热搜API数据
+      const promises = hotSearchApis.map(async (api) => {
+        try {
+          if (config.apis[api]) {
+            const result = await getAPIWithCache(api, userId, config, {});
+            if (result.success && result.data) {
+              return {
+                api: api,
+                data: result.data
+              };
             } else {
+              failedApis.push(api);
               return null;
             }
-          } catch (error) {
-            console.error(`[API工具箱] 获取${api}数据失败: ${error.message}`);
-            failedApis.push(api);
+          } else {
             return null;
           }
-        });
-        
-        // 等待所有API请求完成
-        const results = await Promise.all(promises);
-        
-        // 删除加载消息
-        if (loadingMsg) {
-          await sender.delMsg(loadingMsg);
+        } catch (error) {
+          console.error(`[API工具箱] 获取${api}数据失败: ${error.message}`);
+          failedApis.push(api);
+          return null;
         }
-        
-        // 处理结果
-        let combinedMessage = `📊 全网热搜聚合 (${new Date().toLocaleString()})\n\n`;
-        
-        // 过滤掉失败的请求
-        allResults = results.filter(r => r !== null);
-        
-        if (allResults.length === 0) {
-          await sender.reply(`❌ 获取热搜数据失败，请稍后再试。`);
-          return false;
-        }
-        
-        // 按照API列表顺序格式化内容
-        for (const result of allResults) {
-          if (result && result.data) {
-            // 每个API只展示前5条结果
-            const formattedData = await formatHotSearchData(result.api, result.data, 5);
-            combinedMessage += formattedData + "\n\n";
-          }
-        }
-        
-        // 添加提示信息
-        if (failedApis.length > 0) {
-          combinedMessage += `注：${failedApis.join(', ')} 数据获取失败。\n`;
-        }
-        
-        // 添加完整查看提示
-        combinedMessage += `提示：使用 /api weibohot、/api douyinhot 等命令可查看完整榜单。`;
-        
-        // 发送合并的消息
-        await sender.reply(combinedMessage);
-        return true;
-        
-      } catch (error) {
-        console.error(`[API工具箱] 聚合热搜出错: ${error.message}`);
-        await sender.reply(`❌ 聚合热搜出错: ${error.message}`);
-        return false;
-      }
-    }
-    
-    // 解析用户传入的参数
-    const userParams = {};
-    if (paramsString && paramsString.trim()) {
-      console.log(`[API工具箱][调试] 解析参数字符串: "${paramsString}"`);
-      try {
-        // 分析参数格式
-        if (paramsString.includes('=')) {
-          // 键值对格式 (如 "key1=value1 key2=value2")
-          const pairs = paramsString.split(/\s+/);
-          for (const pair of pairs) {
-            if (pair.includes('=')) {
-              const [key, value] = pair.split('=', 2);
-              if (key && value) {
-                userParams[key.trim()] = value.trim();
-              }
-            }
-          }
-        } else {
-          // 单一参数格式，使用API配置中的第一个参数名作为键
-          const paramKeys = Object.keys(apiConfig.params || {});
-          if (paramKeys.length > 0) {
-            userParams[paramKeys[0]] = paramsString.trim();
-          } else {
-            // 如果API没有预定义参数，尝试使用通用参数名
-            userParams['query'] = paramsString.trim();
-          }
-        }
-        
-        console.log(`[API工具箱][调试] 解析后的用户参数:`, JSON.stringify(userParams));
-      } catch (parseError) {
-        console.error(`[API工具箱] 解析参数错误: ${parseError.message}`);
-        await sender.reply(`❌ 参数格式错误: ${parseError.message}`);
-        return false;
-      }
-    }
-    
-    // 发送加载中消息
-    let loadingMsg = null;
-    try {
-      loadingMsg = await sender.reply(`⏳ 正在获取${apiConfig.name || normalizedApiKey}，请稍候...`);
-      console.log(`[API工具箱] 发送了加载消息，ID: ${loadingMsg}`);
-    } catch (loadingErr) {
-      console.error(`[API工具箱] 发送加载消息失败: ${loadingErr.message}`);
-    }
-    
-    // 设置超时
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error('API请求超时(30秒)'));
-      }, 30000);
-    });
-    
-    try {
-      // 获取API结果，传递用户参数，添加超时处理
-      console.log(`[API工具箱][调试] 开始调用API ${normalizedApiKey}，配置:`, JSON.stringify(config.apis[normalizedApiKey]));
+      });
       
-      // 使用Promise.race实现超时
-      const result = await Promise.race([
-        getAPIWithCache(normalizedApiKey, userId, config, userParams),
-        timeoutPromise
-      ]);
-      
-      // 清除超时计时器
-      clearTimeout(timeoutId);
-      
-      console.log(`[API工具箱][调试] API调用结果: ${JSON.stringify(result)}`);
-      
-      if (!result.success) {
-        console.error(`[API工具箱] API调用失败: ${result.message}`);
-        // 删除加载消息
-        try {
-          if (loadingMsg) {
-            await sender.delMsg(loadingMsg);
-          }
-        } catch (delErr) {
-          console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
-        }
-        await sender.reply(`❌ ${result.message}`);
-        return false;
-      }
-      
-      // 根据API类型处理结果
-      console.log(`[API工具箱][调试] 处理API结果，类型: ${result.type}`);
+      // 等待所有API请求完成
+      const results = await Promise.all(promises);
       
       // 删除加载消息
-      try {
-        if (loadingMsg) {
-          await sender.delMsg(loadingMsg);
-          console.log(`[API工具箱] 成功删除加载消息`);
-        }
-      } catch (delErr) {
-        console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
+      if (loadingMsg) {
+        await sender.delMsg(loadingMsg);
       }
       
-      // 切换多种发送方式尝试
-      let sendSuccess = false;
-
-      // 处理text类型返回
-      if (result.type === 'text') {
-        try {
-          // 如果是数组，格式化成列表
-          if (Array.isArray(result.data)) {
-            // 针对不同API进行特殊处理
-            if (normalizedApiKey === 'douyinhot') {
-              // 抖音热搜榜特殊处理
-              let formattedText = `📊 抖音热搜榜 TOP 15：\n\n`;
-              // 限制显示前15条
-              const topItems = result.data.slice(0, 15);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取热搜词和热度值
-                  const word = item.word || '未知';
-                  const hotValue = item.hot_value ? Math.floor(item.hot_value / 10000) : 0;
-                  formattedText += `${index + 1}. ${word} ${hotValue > 0 ? `(${hotValue}万热度)` : ''}\n`;
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else if (normalizedApiKey === 'weibohot') {
-              // 微博热搜榜特殊处理
-              let formattedText = `🔥 微博热搜榜 TOP 15：\n\n`;
-              // 限制显示前15条
-              const topItems = result.data.slice(0, 15);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取热搜词和热度值
-                  const title = item.title || item.hot_word || '未知';
-                  const hotValue = item.hot || item.hot_value;
-                  let hotText = '';
-                  
-                  if (hotValue) {
-                    if (hotValue > 10000) {
-                      hotText = `(${Math.floor(hotValue / 10000)}万)`;
-                    } else {
-                      hotText = `(${hotValue})`;
-                    }
-                  }
-                  
-                  // 添加标签信息
-                  let tag = '';
-                  if (item.icon_desc || item.label) {
-                    tag = item.icon_desc || item.label;
-                    tag = ` [${tag}]`;
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${tag} ${hotText}\n`;
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else if (normalizedApiKey === 'zhihuhot') {
-              // 知乎热搜榜特殊处理
-              let formattedText = `❓ 知乎热榜 TOP 15：\n\n`;
-              // 限制显示前15条
-              const topItems = result.data.slice(0, 15);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取标题和热度
-                  const title = item.title || item.question || '未知';
-                  const hotValue = item.hot || item.score;
-                  let hotText = '';
-                  
-                  if (hotValue) {
-                    hotText = ` (${hotValue})`;
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${hotText}\n`;
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else if (/^(bilibili|bili)(hot|rank)$/.test(normalizedApiKey) || normalizedApiKey === 'bilibilihot') {
-              // B站热门或排行榜
-              console.log(`[API工具箱][调试] 处理B站热榜数据`, result.data ? `(共${result.data.length}条)` : '');
-              
-              // 直接尝试作为字符串数组处理
-              let formattedText = `📺 B站热搜榜 TOP 15：\n\n`;
-              
-              try {
-                if (Array.isArray(result.data) && result.data.length > 0) {
-                  // 限制显示前15条
-                  const items = result.data.slice(0, 15);
-                  
-                  // 生成格式化文本
-                  items.forEach((item, index) => {
-                    if (typeof item === 'string') {
-                      formattedText += `${index + 1}. ${item}\n`;
-                    } else if (item && typeof item === 'object') {
-                      const title = item.title || item.name || item.word || '未知';
-                      formattedText += `${index + 1}. ${title}\n`;
-                    }
-                  });
-                  
-                  console.log(`[API工具箱][调试] 成功格式化B站热搜榜数据`);
-                } else {
-                  formattedText += "未获取到热榜数据或数据格式错误";
-                  console.log(`[API工具箱][错误] B站热榜数据不是有效数组`);
-                }
-                
-                // 发送结果
-                await sender.reply(formattedText);
-                sendSuccess = true;
-              } catch (error) {
-                console.error(`[API工具箱][错误] 处理B站热榜数据失败:`, error);
-                await sender.reply(`📺 B站热搜榜：\n\n获取数据失败: ${error.message}`);
-                sendSuccess = true;
-              }
-            } else if (normalizedApiKey === 'toutiaohot') {
-              // 今日头条热搜榜特殊处理
-              let formattedText = `📰 今日头条热搜 TOP 15：\n\n`;
-              // 限制显示前15条
-              const topItems = result.data.slice(0, 15);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取标题和热度
-                  const title = item.title || item.name || '未知';
-                  const hotValue = item.hot_value || item.hotValue;
-                  let hotText = '';
-                  
-                  if (hotValue) {
-                    if (hotValue > 10000) {
-                      hotText = ` (${Math.floor(hotValue / 10000)}万热度)`;
-                    } else {
-                      hotText = ` (${hotValue}热度)`;
-                    }
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${hotText}\n`;
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else if (normalizedApiKey === 'baiduhot') {
-              // 百度热搜榜特殊处理
-              let formattedText = `🔍 百度热搜榜 TOP 15：\n\n`;
-              // 限制显示前15条
-              const topItems = result.data.slice(0, 15);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取标题和热度
-                  const title = item.title || '未知';
-                  const hotValue = item.hot || '';
-                  let hotText = '';
-                  
-                  if (hotValue) {
-                    if (hotValue > 10000) {
-                      hotText = ` (${Math.floor(hotValue / 10000)}万)`;
-                    } else {
-                      hotText = ` (${hotValue})`;
-                    }
-                  }
-                  
-                  // 添加描述信息
-                  let desc = '';
-                  if (item.desc && item.desc.trim()) {
-                    desc = `\n   ${item.desc}`;
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${hotText}${desc}\n`;
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else if (normalizedApiKey === 'allhot') {
-              // 热搜聚合，获取多个热搜API的数据
-              sendSuccess = true; // 预设为成功，如果有错误再修改
-              
-              // 发送加载中消息
-              let loadingMsg = await sender.reply(`⏳ 正在聚合热搜数据，请稍候...`);
-              
-              try {
-                // 热搜API列表
-                const hotSearchApis = ['weibohot', 'douyinhot', 'baiduhot', 'bilibilihot'];
-                let allResults = [];
-                let failedApis = [];
-                
-                // 并行获取所有热搜API数据
-                const promises = hotSearchApis.map(async (api) => {
-                  try {
-                    if (config.apis[api]) {
-                      const result = await getAPIWithCache(api, userId, config, {});
-                      if (result.success && result.data) {
-                        return {
-                          api: api,
-                          data: result.data
-                        };
-                      } else {
-                        failedApis.push(api);
-                        return null;
-                      }
-                    } else {
-                      return null;
-                    }
-                  } catch (error) {
-                    console.error(`[API工具箱] 获取${api}数据失败: ${error.message}`);
-                    failedApis.push(api);
-                    return null;
-                  }
-                });
-                
-                // 等待所有API请求完成
-                const results = await Promise.all(promises);
-                
-                // 删除加载消息
-                if (loadingMsg) {
-                  await sender.delMsg(loadingMsg);
-                }
-                
-                // 处理结果
-                let combinedMessage = `📊 全网热搜聚合 (${new Date().toLocaleString()})\n\n`;
-                
-                // 过滤掉失败的请求
-                allResults = results.filter(r => r !== null);
-                
-                if (allResults.length === 0) {
-                  await sender.reply(`❌ 获取热搜数据失败，请稍后再试。`);
-                  return false;
-                }
-                
-                // 按照API列表顺序格式化内容
-                for (const result of allResults) {
-                  if (result && result.data) {
-                    // 每个API只展示前5条结果
-                    const formattedData = await formatHotSearchData(result.api, result.data, 5);
-                    combinedMessage += formattedData + "\n\n";
-                  }
-                }
-                
-                // 添加提示信息
-                if (failedApis.length > 0) {
-                  combinedMessage += `注：${failedApis.join(', ')} 数据获取失败。\n`;
-                }
-                
-                // 添加完整查看提示
-                combinedMessage += `提示：使用 /api weibohot、/api douyinhot 等命令可查看完整榜单。`;
-                
-                // 发送合并的消息
-                await sender.reply(combinedMessage);
-                
-              } catch (error) {
-                console.error(`[API工具箱] 聚合热搜出错: ${error.message}`);
-                await sender.reply(`❌ 聚合热搜出错: ${error.message}`);
-                sendSuccess = false;
-              }
-            } else if (/^(douban|movie)/.test(normalizedApiKey)) {
-              // 豆瓣电影/电影排行榜
-              let formattedText = `🎬 电影推荐 TOP 10：\n\n`;
-              // 限制显示前10条
-              const topItems = result.data.slice(0, 10);
-              topItems.forEach((item, index) => {
-                if (item && typeof item === 'object') {
-                  // 提取电影信息
-                  const title = item.title || item.name || '未知';
-                  const year = item.year ? `(${item.year})` : '';
-                  const rating = item.rating || item.score || item.rate;
-                  let ratingText = '';
-                  
-                  if (rating) {
-                    ratingText = ` ⭐${rating}`;
-                  }
-                  
-                  // 提取导演和演员
-                  let director = '';
-                  if (item.director) {
-                    if (Array.isArray(item.director)) {
-                      director = item.director.join('/');
-                    } else {
-                      director = item.director;
-                    }
-                  }
-                  
-                  let actors = '';
-                  if (item.actors || item.cast) {
-                    const actorList = item.actors || item.cast;
-                    if (Array.isArray(actorList)) {
-                      actors = actorList.slice(0, 3).join('/');
-                      if (actorList.length > 3) {
-                        actors += '...';
-                      }
-                    } else {
-                      actors = actorList;
-                    }
-                  }
-                  
-                  let info = '';
-                  if (director || actors) {
-                    const parts = [];
-                    if (director) parts.push(`导演: ${director}`);
-                    if (actors) parts.push(`演员: ${actors}`);
-                    info = ` (${parts.join(' | ')})`;
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${year}${ratingText}\n`;
-                  if (info) {
-                    formattedText += `   ${info}\n`;
-                  }
-                }
-              });
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            } else {
-              // 其他数组类型的通用处理
-              let formattedText = `📋 ${apiConfig.name || normalizedApiKey}：\n\n`;
-              // 限制条目数，避免消息过长
-              const maxItems = 20;
-              const displayItems = result.data.slice(0, maxItems);
-              
-              // 尝试智能识别数据类型，适配不同的格式化方式
-              const sampleItem = displayItems[0];
-              let isNewsList = false;
-              let isSimpleList = false;
-              
-              if (sampleItem && typeof sampleItem === 'object') {
-                // 判断是否为新闻列表类型
-                if (sampleItem.title && (sampleItem.time || sampleItem.date || sampleItem.datetime)) {
-                  isNewsList = true;
-                }
-                // 判断是否为简单列表（只有一个主要属性）
-                const stringProps = Object.keys(sampleItem).filter(key => 
-                  typeof sampleItem[key] === 'string' && sampleItem[key].length < 100
-                );
-                if (stringProps.length === 1) {
-                  isSimpleList = true;
-                }
-              }
-              
-              if (isNewsList) {
-                // 新闻列表格式化
-                displayItems.forEach((item, index) => {
-                  const title = item.title || '未知标题';
-                  let time = '';
-                  if (item.time) {
-                    time = item.time;
-                  } else if (item.date) {
-                    time = item.date;
-                  } else if (item.datetime) {
-                    time = item.datetime;
-                  }
-                  
-                  if (time) {
-                    // 尝试格式化时间
-                    if (time.length === 10 && /^\d+$/.test(time)) {
-                      // Unix时间戳
-                      time = new Date(parseInt(time) * 1000).toLocaleString();
-                    } else if (time.length === 13 && /^\d+$/.test(time)) {
-                      // 毫秒时间戳
-                      time = new Date(parseInt(time)).toLocaleString();
-                    }
-                    
-                    time = ` [${time}]`;
-                  }
-                  
-                  formattedText += `${index + 1}. ${title}${time}\n`;
-                });
-              } else if (isSimpleList) {
-                // 简单列表格式化
-                const mainProp = Object.keys(sampleItem).filter(key => 
-                  typeof sampleItem[key] === 'string'
-                )[0];
-                
-                displayItems.forEach((item, index) => {
-                  formattedText += `${index + 1}. ${item[mainProp]}\n`;
-                });
-              } else {
-                // 标准处理方式
-                displayItems.forEach((item, index) => {
-                  // 如果item是对象，尝试智能提取关键信息
-                  if (item && typeof item === 'object') {
-                    // 优先级：title > name > word > content > 第一个非空字符串属性
-                    let displayText = '';
-                    if (item.title) {
-                      displayText = item.title;
-                    } else if (item.name) {
-                      displayText = item.name;
-                    } else if (item.word) {
-                      displayText = item.word;
-                    } else if (item.content) {
-                      displayText = item.content;
-                    } else {
-                      // 尝试找到第一个字符串属性
-                      for (const key in item) {
-                        if (typeof item[key] === 'string' && item[key].trim()) {
-                          displayText = item[key];
-                          break;
-                        }
-                      }
-                      
-                      // 如果还没找到，使用JSON
-                      if (!displayText) {
-                        // 限制JSON长度避免消息过长
-                        const json = JSON.stringify(item);
-                        displayText = json.length > 50 ? json.substring(0, 50) + '...' : json;
-                      }
-                    }
-                    
-                    formattedText += `${index + 1}. ${displayText}\n`;
-                  } else if (item) {
-                    // 字符串或其他简单类型直接显示
-                    formattedText += `${index + 1}. ${item.toString()}\n`;
-                  }
-                });
-              }
-              
-              // 如果结果被截断，添加提示
-              if (result.data.length > maxItems) {
-                formattedText += `\n...共${result.data.length}条结果，仅显示前${maxItems}条`;
-              }
-              
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            }
-          } else if (typeof result.data === 'object') {
-            // 如果是对象，尝试提取有用信息，或美化JSON后发送
-            
-            // 检查是否为天气数据
-            if (
-              (result.data.weather || result.data.forecast || result.data.daily) &&
-              (result.data.city || result.data.cityInfo || result.data.cityid)
-            ) {
-              // 处理天气数据
-              let weatherInfo = '';
-              let cityName = '';
-              
-              // 提取城市名称
-              if (result.data.city) {
-                cityName = typeof result.data.city === 'string' ? result.data.city : result.data.city.name || '';
-              } else if (result.data.cityInfo) {
-                cityName = result.data.cityInfo.city || '';
-              }
-              
-              // 提取当天天气
-              let todayWeather = {};
-              if (result.data.weather) {
-                todayWeather = result.data.weather;
-              } else if (result.data.data && result.data.data.forecast) {
-                todayWeather = result.data.data.forecast[0] || {};
-              } else if (result.data.daily && result.data.daily[0]) {
-                todayWeather = result.data.daily[0];
-              }
-              
-              // 构建天气信息
-              if (cityName) {
-                weatherInfo += `🌤️ ${cityName}天气预报\n\n`;
-              } else {
-                weatherInfo += `🌤️ 天气预报\n\n`;
-              }
-              
-              // 今日天气
-              let temperature = '';
-              if (todayWeather.temperature || todayWeather.temp) {
-                temperature = todayWeather.temperature || todayWeather.temp;
-              } else if (todayWeather.high && todayWeather.low) {
-                temperature = `${todayWeather.low}~${todayWeather.high}`;
-              } else if (todayWeather.max && todayWeather.min) {
-                temperature = `${todayWeather.min}~${todayWeather.max}`;
-              }
-              
-              // 加上温度单位
-              if (temperature && !temperature.includes('°C') && !temperature.includes('℃')) {
-                temperature += '℃';
-              }
-              
-              let weatherDesc = todayWeather.weather || todayWeather.type || todayWeather.text || '';
-              let wind = todayWeather.wind || '';
-              if (todayWeather.windDirection && todayWeather.windPower) {
-                wind = `${todayWeather.windDirection}${todayWeather.windPower}`;
-              }
-              
-              let date = todayWeather.date || new Date().toLocaleDateString();
-              weatherInfo += `今日(${date})：${weatherDesc} ${temperature} ${wind}\n`;
-              
-              // 提示信息
-              if (result.data.tips || (result.data.data && result.data.data.ganmao)) {
-                const tips = result.data.tips || result.data.data.ganmao;
-                weatherInfo += `\n📌 温馨提示：${tips}\n`;
-              }
-              
-              // 未来几天天气预报
-              let forecast = [];
-              if (result.data.forecast) {
-                forecast = result.data.forecast.slice(1); // 从第二条开始，第一条通常是今天
-              } else if (result.data.data && result.data.data.forecast) {
-                forecast = result.data.data.forecast.slice(1);
-              } else if (result.data.daily) {
-                forecast = result.data.daily.slice(1, 5); // 最多显示4天
-              }
-              
-              if (forecast.length > 0) {
-                weatherInfo += '\n未来几天天气：\n';
-                forecast.forEach(day => {
-                  let dayInfo = '';
-                  
-                  // 日期
-                  if (day.date) {
-                    dayInfo += day.date;
-                  } else if (day.fxDate) {
-                    dayInfo += day.fxDate;
-                  }
-                  
-                  // 天气描述
-                  let dayWeather = day.weather || day.type || day.text || '';
-                  if (dayWeather) {
-                    dayInfo += ` ${dayWeather}`;
-                  }
-                  
-                  // 温度
-                  let dayTemp = '';
-                  if (day.temperature || day.temp) {
-                    dayTemp = day.temperature || day.temp;
-                  } else if (day.high && day.low) {
-                    dayTemp = `${day.low}~${day.high}`;
-                  } else if (day.tempMax && day.tempMin) {
-                    dayTemp = `${day.tempMin}~${day.tempMax}`;
-                  }
-                  
-                  // 加上温度单位
-                  if (dayTemp && !dayTemp.includes('°C') && !dayTemp.includes('℃')) {
-                    dayTemp += '℃';
-                  }
-                  
-                  if (dayTemp) {
-                    dayInfo += ` ${dayTemp}`;
-                  }
-                  
-                  weatherInfo += `· ${dayInfo}\n`;
-                });
-              }
-              
-              await sender.reply(weatherInfo);
-              sendSuccess = true;
-            } else {
-              // 提取常见字段显示，如果没有就显示整个对象
-              let formattedText = `📄 ${apiConfig.name || normalizedApiKey}：\n\n`;
-              const usefulKeys = ['title', 'name', 'content', 'message', 'description', 'text', 'url'];
-              let hasUsefulInfo = false;
-              
-              for (const key of usefulKeys) {
-                if (result.data[key] && typeof result.data[key] === 'string') {
-                  formattedText += `${key}: ${result.data[key]}\n`;
-                  hasUsefulInfo = true;
-                }
-              }
-              
-              // 如果没有提取到有用信息，使用格式化的JSON
-              if (!hasUsefulInfo) {
-                // 限制JSON长度
-                const json = JSON.stringify(result.data, null, 2);
-                formattedText = json.length > 2000 
-                  ? "```json\n" + json.substring(0, 2000) + "\n...(内容太长已截断)\n```" 
-                  : "```json\n" + json + "\n```";
-              }
-              
-              await sender.reply(formattedText);
-              sendSuccess = true;
-            }
-          } else {
-            // 字符串直接发送
-            await sender.reply(result.data.toString());
-            sendSuccess = true;
-          }
-        } catch (textErr) {
-          console.error(`[API工具箱] 发送文本消息失败: ${textErr.message}`);
-          // 降级处理，尝试简单文本方式发送
-          try {
-            const simpleText = typeof result.data === 'object' 
-              ? '数据太复杂，无法显示。请查看日志了解详情。' 
-              : result.data.toString().substring(0, 500) + (result.data.toString().length > 500 ? '...(已截断)' : '');
-            await sender.reply(simpleText);
-            sendSuccess = true;
-          } catch (fallbackErr) {
-            console.error(`[API工具箱] 降级发送也失败: ${fallbackErr.message}`);
-          }
-        }
-      }
-      // 处理图片类型
-      else if (result.type === 'image') {
-        try {
-          console.log(`[API工具箱] 尝试发送图片: ${result.data}`);
-          // 尝试使用多种方式发送图片
-          sendSuccess = await sendImageWithFallback(sender, result.data);
-        } catch (imgErr) {
-          console.error(`[API工具箱] 所有发送图片方式均失败: ${imgErr.message}，尝试发送链接`);
-          try {
-            await sender.reply(`🖼️ 图片链接: ${result.data}\n\n请复制链接查看图片`);
-            sendSuccess = true;
-          } catch (linkErr) {
-            console.error(`[API工具箱] 发送图片链接也失败: ${linkErr.message}`);
-          }
-        }
-      } 
-      // 处理视频类型
-      else if (result.type === 'video') {
-        try {
-          console.log(`[API工具箱] 尝试发送视频: ${result.data}`);
-          // 尝试使用多种方式发送视频
-          sendSuccess = await sendVideoWithFallback(sender, result.data);
-        } catch (videoErr) {
-          console.error(`[API工具箱] 所有发送视频方式均失败: ${videoErr.message}，尝试发送链接`);
-          try {
-            await sender.reply(`🎬 视频链接: ${result.data}\n\n请复制链接查看视频`);
-            sendSuccess = true;
-          } catch (linkErr) {
-            console.error(`[API工具箱] 发送视频链接也失败: ${linkErr.message}`);
-          }
-        }
-      }
-      // 其他未知类型
-      else {
-        try {
-          console.log(`[API工具箱] 未知类型(${result.type})，尝试作为文本发送: ${result.data}`);
-          await sender.reply(`API返回数据(${result.type}类型): ${result.data}`);
-          sendSuccess = true;
-        } catch (unknownErr) {
-          console.error(`[API工具箱] 发送未知类型数据失败: ${unknownErr.message}`);
-        }
-      }
+      // 处理结果
+      let combinedMessage = `📊 全网热搜聚合 (${new Date().toLocaleString()})\n\n`;
       
-      // 判断是否发送成功
-      if (sendSuccess) {
-        console.log(`[API工具箱] ${normalizedApiKey} 结果发送成功`);
-        return true;
-      } else {
-        console.error(`[API工具箱] 所有发送方式均失败`);
-        await sender.reply(`❌ 无法发送API结果，请报告管理员`);
+      // 过滤掉失败的请求
+      allResults = results.filter(r => r !== null);
+      
+      if (allResults.length === 0) {
+        await sender.reply(`❌ 获取热搜数据失败，请稍后再试。`);
         return false;
       }
-    
+      
+      // 按照API列表顺序格式化内容
+      for (const result of allResults) {
+        if (result && result.data) {
+          // 每个API只展示前5条结果
+          const formattedData = await formatHotSearchData(result.api, result.data, 5);
+          combinedMessage += formattedData + "\n\n";
+        }
+      }
+      
+      // 添加提示信息
+      if (failedApis.length > 0) {
+        combinedMessage += `注：${failedApis.join(', ')} 数据获取失败。\n`;
+      }
+      
+      // 添加完整查看提示
+      combinedMessage += `提示：使用 /api weibohot、/api douyinhot 等命令可查看完整榜单。`;
+      
+      // 发送合并的消息
+      await sender.reply(combinedMessage);
+      return true;
+      
     } catch (error) {
-      // 清除超时计时器
-      clearTimeout(timeoutId);
-      
-      console.error(`[API工具箱] 调用API出错: ${error.message}`);
-      
-      // 删除加载消息
-      try {
-        if (loadingMsg) {
-          await sender.delMsg(loadingMsg);
-        }
-      } catch (delErr) {
-        console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
-      }
-      
-      await sender.reply(`❌ 调用API出错: ${error.message}`);
+      console.error(`[API工具箱] 聚合热搜出错: ${error.message}`);
+      await sender.reply(`❌ 聚合热搜出错: ${error.message}`);
       return false;
     }
   }
+  
+  // 解析用户传入的参数
+  const userParams = {};
+  if (paramsString && paramsString.trim()) {
+    console.log(`[API工具箱][调试] 解析参数字符串: "${paramsString}"`);
+    try {
+      // 分析参数格式
+      if (paramsString.includes('=')) {
+        // 键值对格式 (如 "key1=value1 key2=value2")
+        const pairs = paramsString.split(/\s+/);
+        for (const pair of pairs) {
+          if (pair.includes('=')) {
+            const [key, value] = pair.split('=', 2);
+            if (key && value) {
+              userParams[key.trim()] = value.trim();
+            }
+          }
+        }
+      } else {
+        // 单一参数格式，使用API配置中的第一个参数名作为键
+        const paramKeys = Object.keys(apiConfig.params || {});
+        if (paramKeys.length > 0) {
+          userParams[paramKeys[0]] = paramsString.trim();
+        } else {
+          // 如果API没有预定义参数，尝试使用通用参数名
+          userParams['query'] = paramsString.trim();
+        }
+      }
+      
+      console.log(`[API工具箱][调试] 解析后的用户参数:`, JSON.stringify(userParams));
+    } catch (parseError) {
+      console.error(`[API工具箱] 解析参数错误: ${parseError.message}`);
+      await sender.reply(`❌ 参数格式错误: ${parseError.message}`);
+      return false;
+    }
+  }
+  
+  // 发送加载中消息
+  let loadingMsg = null;
+  try {
+    loadingMsg = await sender.reply(`⏳ 正在获取${apiConfig.name || normalizedApiKey}，请稍候...`);
+    console.log(`[API工具箱] 发送了加载消息，ID: ${loadingMsg}`);
+  } catch (loadingErr) {
+    console.error(`[API工具箱] 发送加载消息失败: ${loadingErr.message}`);
+  }
+  
+  // 设置超时
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('API请求超时(30秒)'));
+    }, 30000);
+  });
+  
+  try {
+    // 获取API结果，传递用户参数，添加超时处理
+    console.log(`[API工具箱][调试] 开始调用API ${normalizedApiKey}，配置:`, JSON.stringify(config.apis[normalizedApiKey]));
+    
+    // 使用Promise.race实现超时
+    const result = await Promise.race([
+      getAPIWithCache(normalizedApiKey, userId, config, userParams),
+      timeoutPromise
+    ]);
+    
+    // 清除超时计时器
+    clearTimeout(timeoutId);
+    
+    console.log(`[API工具箱][调试] API调用结果: ${JSON.stringify(result)}`);
+    
+    if (!result.success) {
+      console.error(`[API工具箱] API调用失败: ${result.message}`);
+      // 删除加载消息
+      try {
+        if (loadingMsg) {
+          await sender.delMsg(loadingMsg);
+        }
+      } catch (delErr) {
+        console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
+      }
+      await sender.reply(`❌ ${result.message}`);
+      return false;
+    }
+    
+    // 根据API类型处理结果
+    console.log(`[API工具箱][调试] 处理API结果，类型: ${result.type}`);
+    
+    // 删除加载消息
+    try {
+      if (loadingMsg) {
+        await sender.delMsg(loadingMsg);
+        console.log(`[API工具箱] 成功删除加载消息`);
+      }
+    } catch (delErr) {
+      console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
+    }
+    
+    // 切换多种发送方式尝试
+    let sendSuccess = false;
 
+    // 处理text类型返回
+    if (result.type === 'text') {
+      try {
+        // 如果是数组，格式化成列表
+        if (Array.isArray(result.data)) {
+          // 针对不同API进行特殊处理
+          if (normalizedApiKey === 'douyinhot') {
+            // 抖音热搜榜特殊处理
+            let formattedText = `📊 抖音热搜榜 TOP 15：\n\n`;
+            // 限制显示前15条
+            const topItems = result.data.slice(0, 15);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取热搜词和热度值
+                const word = item.word || '未知';
+                const hotValue = item.hot_value ? Math.floor(item.hot_value / 10000) : 0;
+                formattedText += `${index + 1}. ${word} ${hotValue > 0 ? `(${hotValue}万热度)` : ''}\n`;
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else if (normalizedApiKey === 'weibohot') {
+            // 微博热搜榜特殊处理
+            let formattedText = `🔥 微博热搜榜 TOP 15：\n\n`;
+            // 限制显示前15条
+            const topItems = result.data.slice(0, 15);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取热搜词和热度值
+                const title = item.title || item.hot_word || '未知';
+                const hotValue = item.hot || item.hot_value;
+                let hotText = '';
+                
+                if (hotValue) {
+                  if (hotValue > 10000) {
+                    hotText = `(${Math.floor(hotValue / 10000)}万)`;
+                  } else {
+                    hotText = `(${hotValue})`;
+                  }
+                }
+                
+                // 添加标签信息
+                let tag = '';
+                if (item.icon_desc || item.label) {
+                  tag = item.icon_desc || item.label;
+                  tag = ` [${tag}]`;
+                }
+                
+                formattedText += `${index + 1}. ${title}${tag} ${hotText}\n`;
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else if (normalizedApiKey === 'zhihuhot') {
+            // 知乎热搜榜特殊处理
+            let formattedText = `❓ 知乎热榜 TOP 15：\n\n`;
+            // 限制显示前15条
+            const topItems = result.data.slice(0, 15);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取标题和热度
+                const title = item.title || item.question || '未知';
+                const hotValue = item.hot || item.score;
+                let hotText = '';
+                
+                if (hotValue) {
+                  hotText = ` (${hotValue})`;
+                }
+                
+                formattedText += `${index + 1}. ${title}${hotText}\n`;
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else if (/^(bilibili|bili)(hot|rank)$/.test(normalizedApiKey) || normalizedApiKey === 'bilibilihot') {
+            // B站热门或排行榜
+            console.log(`[API工具箱][调试] 处理B站热榜数据`, result.data ? `(共${result.data.length}条)` : '');
+            
+            // 直接尝试作为字符串数组处理
+            let formattedText = `📺 B站热搜榜 TOP 15：\n\n`;
+            
+            try {
+              if (Array.isArray(result.data) && result.data.length > 0) {
+                // 限制显示前15条
+                const items = result.data.slice(0, 15);
+                
+                // 生成格式化文本
+                items.forEach((item, index) => {
+                  if (typeof item === 'string') {
+                    formattedText += `${index + 1}. ${item}\n`;
+                  } else if (item && typeof item === 'object') {
+                    const title = item.title || item.name || item.word || '未知';
+                    formattedText += `${index + 1}. ${title}\n`;
+                  }
+                });
+                
+                console.log(`[API工具箱][调试] 成功格式化B站热搜榜数据`);
+              } else {
+                formattedText += "未获取到热榜数据或数据格式错误";
+                console.log(`[API工具箱][错误] B站热榜数据不是有效数组`);
+              }
+              
+              // 发送结果
+              await sender.reply(formattedText);
+              sendSuccess = true;
+            } catch (error) {
+              console.error(`[API工具箱][错误] 处理B站热榜数据失败:`, error);
+              await sender.reply(`📺 B站热搜榜：\n\n获取数据失败: ${error.message}`);
+              sendSuccess = true;
+            }
+          } else if (normalizedApiKey === 'toutiaohot') {
+            // 今日头条热搜榜特殊处理
+            let formattedText = `📰 今日头条热搜 TOP 15：\n\n`;
+            // 限制显示前15条
+            const topItems = result.data.slice(0, 15);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取标题和热度
+                const title = item.title || item.name || '未知';
+                const hotValue = item.hot_value || item.hotValue;
+                let hotText = '';
+                
+                if (hotValue) {
+                  if (hotValue > 10000) {
+                    hotText = ` (${Math.floor(hotValue / 10000)}万热度)`;
+                  } else {
+                    hotText = ` (${hotValue}热度)`;
+                  }
+                }
+                
+                formattedText += `${index + 1}. ${title}${hotText}\n`;
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else if (normalizedApiKey === 'baiduhot') {
+            // 百度热搜榜特殊处理
+            let formattedText = `🔍 百度热搜榜 TOP 15：\n\n`;
+            // 限制显示前15条
+            const topItems = result.data.slice(0, 15);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取标题和热度
+                const title = item.title || '未知';
+                const hotValue = item.hot || '';
+                let hotText = '';
+                
+                if (hotValue) {
+                  if (hotValue > 10000) {
+                    hotText = ` (${Math.floor(hotValue / 10000)}万)`;
+                  } else {
+                    hotText = ` (${hotValue})`;
+                  }
+                }
+                
+                // 添加描述信息
+                let desc = '';
+                if (item.desc && item.desc.trim()) {
+                  desc = `\n   ${item.desc}`;
+                }
+                
+                formattedText += `${index + 1}. ${title}${hotText}${desc}\n`;
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else if (normalizedApiKey === 'allhot') {
+            // 热搜聚合，获取多个热搜API的数据
+            sendSuccess = true; // 预设为成功，如果有错误再修改
+            
+            // 发送加载中消息
+            let loadingMsg = await sender.reply(`⏳ 正在聚合热搜数据，请稍候...`);
+            
+            try {
+              // 热搜API列表
+              const hotSearchApis = ['weibohot', 'douyinhot', 'baiduhot', 'bilibilihot'];
+              let allResults = [];
+              let failedApis = [];
+              
+              // 并行获取所有热搜API数据
+              const promises = hotSearchApis.map(async (api) => {
+                try {
+                  if (config.apis[api]) {
+                    const result = await getAPIWithCache(api, userId, config, {});
+                    if (result.success && result.data) {
+                      return {
+                        api: api,
+                        data: result.data
+                      };
+                    } else {
+                      failedApis.push(api);
+                      return null;
+                    }
+                  } else {
+                    return null;
+                  }
+                } catch (error) {
+                  console.error(`[API工具箱] 获取${api}数据失败: ${error.message}`);
+                  failedApis.push(api);
+                  return null;
+                }
+              });
+              
+              // 等待所有API请求完成
+              const results = await Promise.all(promises);
+              
+              // 删除加载消息
+              if (loadingMsg) {
+                await sender.delMsg(loadingMsg);
+              }
+              
+              // 处理结果
+              let combinedMessage = `📊 全网热搜聚合 (${new Date().toLocaleString()})\n\n`;
+              
+              // 过滤掉失败的请求
+              allResults = results.filter(r => r !== null);
+              
+              if (allResults.length === 0) {
+                await sender.reply(`❌ 获取热搜数据失败，请稍后再试。`);
+                return false;
+              }
+              
+              // 按照API列表顺序格式化内容
+              for (const result of allResults) {
+                if (result && result.data) {
+                  // 每个API只展示前5条结果
+                  const formattedData = await formatHotSearchData(result.api, result.data, 5);
+                  combinedMessage += formattedData + "\n\n";
+                }
+              }
+              
+              // 添加提示信息
+              if (failedApis.length > 0) {
+                combinedMessage += `注：${failedApis.join(', ')} 数据获取失败。\n`;
+              }
+              
+              // 添加完整查看提示
+              combinedMessage += `提示：使用 /api weibohot、/api douyinhot 等命令可查看完整榜单。`;
+              
+              // 发送合并的消息
+              await sender.reply(combinedMessage);
+              
+            } catch (error) {
+              console.error(`[API工具箱] 聚合热搜出错: ${error.message}`);
+              await sender.reply(`❌ 聚合热搜出错: ${error.message}`);
+              sendSuccess = false;
+            }
+          } else if (/^(douban|movie)/.test(normalizedApiKey)) {
+            // 豆瓣电影/电影排行榜
+            let formattedText = `🎬 电影推荐 TOP 10：\n\n`;
+            // 限制显示前10条
+            const topItems = result.data.slice(0, 10);
+            topItems.forEach((item, index) => {
+              if (item && typeof item === 'object') {
+                // 提取电影信息
+                const title = item.title || item.name || '未知';
+                const year = item.year ? `(${item.year})` : '';
+                const rating = item.rating || item.score || item.rate;
+                let ratingText = '';
+                
+                if (rating) {
+                  ratingText = ` ⭐${rating}`;
+                }
+                
+                // 提取导演和演员
+                let director = '';
+                if (item.director) {
+                  if (Array.isArray(item.director)) {
+                    director = item.director.join('/');
+                  } else {
+                    director = item.director;
+                  }
+                }
+                
+                let actors = '';
+                if (item.actors || item.cast) {
+                  const actorList = item.actors || item.cast;
+                  if (Array.isArray(actorList)) {
+                    actors = actorList.slice(0, 3).join('/');
+                    if (actorList.length > 3) {
+                      actors += '...';
+                    }
+                  } else {
+                    actors = actorList;
+                  }
+                }
+                
+                let info = '';
+                if (director || actors) {
+                  const parts = [];
+                  if (director) parts.push(`导演: ${director}`);
+                  if (actors) parts.push(`演员: ${actors}`);
+                  info = ` (${parts.join(' | ')})`;
+                }
+                
+                formattedText += `${index + 1}. ${title}${year}${ratingText}\n`;
+                if (info) {
+                  formattedText += `   ${info}\n`;
+                }
+              }
+            });
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          } else {
+            // 其他数组类型的通用处理
+            let formattedText = `📋 ${apiConfig.name || normalizedApiKey}：\n\n`;
+            // 限制条目数，避免消息过长
+            const maxItems = 20;
+            const displayItems = result.data.slice(0, maxItems);
+            
+            // 尝试智能识别数据类型，适配不同的格式化方式
+            const sampleItem = displayItems[0];
+            let isNewsList = false;
+            let isSimpleList = false;
+            
+            if (sampleItem && typeof sampleItem === 'object') {
+              // 判断是否为新闻列表类型
+              if (sampleItem.title && (sampleItem.time || sampleItem.date || sampleItem.datetime)) {
+                isNewsList = true;
+              }
+              // 判断是否为简单列表（只有一个主要属性）
+              const stringProps = Object.keys(sampleItem).filter(key => 
+                typeof sampleItem[key] === 'string' && sampleItem[key].length < 100
+              );
+              if (stringProps.length === 1) {
+                isSimpleList = true;
+              }
+            }
+            
+            if (isNewsList) {
+              // 新闻列表格式化
+              displayItems.forEach((item, index) => {
+                const title = item.title || '未知标题';
+                let time = '';
+                if (item.time) {
+                  time = item.time;
+                } else if (item.date) {
+                  time = item.date;
+                } else if (item.datetime) {
+                  time = item.datetime;
+                }
+                
+                if (time) {
+                  // 尝试格式化时间
+                  if (time.length === 10 && /^\d+$/.test(time)) {
+                    // Unix时间戳
+                    time = new Date(parseInt(time) * 1000).toLocaleString();
+                  } else if (time.length === 13 && /^\d+$/.test(time)) {
+                    // 毫秒时间戳
+                    time = new Date(parseInt(time)).toLocaleString();
+                  }
+                  
+                  time = ` [${time}]`;
+                }
+                
+                formattedText += `${index + 1}. ${title}${time}\n`;
+              });
+            } else if (isSimpleList) {
+              // 简单列表格式化
+              const mainProp = Object.keys(sampleItem).filter(key => 
+                typeof sampleItem[key] === 'string'
+              )[0];
+              
+              displayItems.forEach((item, index) => {
+                formattedText += `${index + 1}. ${item[mainProp]}\n`;
+              });
+            } else {
+              // 标准处理方式
+              displayItems.forEach((item, index) => {
+                // 如果item是对象，尝试智能提取关键信息
+                if (item && typeof item === 'object') {
+                  // 优先级：title > name > word > content > 第一个非空字符串属性
+                  let displayText = '';
+                  if (item.title) {
+                    displayText = item.title;
+                  } else if (item.name) {
+                    displayText = item.name;
+                  } else if (item.word) {
+                    displayText = item.word;
+                  } else if (item.content) {
+                    displayText = item.content;
+                  } else {
+                    // 尝试找到第一个字符串属性
+                    for (const key in item) {
+                      if (typeof item[key] === 'string' && item[key].trim()) {
+                        displayText = item[key];
+                        break;
+                      }
+                    }
+                    
+                    // 如果还没找到，使用JSON
+                    if (!displayText) {
+                      // 限制JSON长度避免消息过长
+                      const json = JSON.stringify(item);
+                      displayText = json.length > 50 ? json.substring(0, 50) + '...' : json;
+                    }
+                  }
+                  
+                  formattedText += `${index + 1}. ${displayText}\n`;
+                } else if (item) {
+                  // 字符串或其他简单类型直接显示
+                  formattedText += `${index + 1}. ${item.toString()}\n`;
+                }
+              });
+            }
+            
+            // 如果结果被截断，添加提示
+            if (result.data.length > maxItems) {
+              formattedText += `\n...共${result.data.length}条结果，仅显示前${maxItems}条`;
+            }
+            
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          }
+        } else if (typeof result.data === 'object') {
+          // 如果是对象，尝试提取有用信息，或美化JSON后发送
+          
+          // 检查是否为天气数据
+          if (
+            (result.data.weather || result.data.forecast || result.data.daily) &&
+            (result.data.city || result.data.cityInfo || result.data.cityid)
+          ) {
+            // 处理天气数据
+            let weatherInfo = '';
+            let cityName = '';
+            
+            // 提取城市名称
+            if (result.data.city) {
+              cityName = typeof result.data.city === 'string' ? result.data.city : result.data.city.name || '';
+            } else if (result.data.cityInfo) {
+              cityName = result.data.cityInfo.city || '';
+            }
+            
+            // 提取当天天气
+            let todayWeather = {};
+            if (result.data.weather) {
+              todayWeather = result.data.weather;
+            } else if (result.data.data && result.data.data.forecast) {
+              todayWeather = result.data.data.forecast[0] || {};
+            } else if (result.data.daily && result.data.daily[0]) {
+              todayWeather = result.data.daily[0];
+            }
+            
+            // 构建天气信息
+            if (cityName) {
+              weatherInfo += `🌤️ ${cityName}天气预报\n\n`;
+            } else {
+              weatherInfo += `🌤️ 天气预报\n\n`;
+            }
+            
+            // 今日天气
+            let temperature = '';
+            if (todayWeather.temperature || todayWeather.temp) {
+              temperature = todayWeather.temperature || todayWeather.temp;
+            } else if (todayWeather.high && todayWeather.low) {
+              temperature = `${todayWeather.low}~${todayWeather.high}`;
+            } else if (todayWeather.max && todayWeather.min) {
+              temperature = `${todayWeather.min}~${todayWeather.max}`;
+            }
+            
+            // 加上温度单位
+            if (temperature && !temperature.includes('°C') && !temperature.includes('℃')) {
+              temperature += '℃';
+            }
+            
+            let weatherDesc = todayWeather.weather || todayWeather.type || todayWeather.text || '';
+            let wind = todayWeather.wind || '';
+            if (todayWeather.windDirection && todayWeather.windPower) {
+              wind = `${todayWeather.windDirection}${todayWeather.windPower}`;
+            }
+            
+            let date = todayWeather.date || new Date().toLocaleDateString();
+            weatherInfo += `今日(${date})：${weatherDesc} ${temperature} ${wind}\n`;
+            
+            // 提示信息
+            if (result.data.tips || (result.data.data && result.data.data.ganmao)) {
+              const tips = result.data.tips || result.data.data.ganmao;
+              weatherInfo += `\n📌 温馨提示：${tips}\n`;
+            }
+            
+            // 未来几天天气预报
+            let forecast = [];
+            if (result.data.forecast) {
+              forecast = result.data.forecast.slice(1); // 从第二条开始，第一条通常是今天
+            } else if (result.data.data && result.data.data.forecast) {
+              forecast = result.data.data.forecast.slice(1);
+            } else if (result.data.daily) {
+              forecast = result.data.daily.slice(1, 5); // 最多显示4天
+            }
+            
+            if (forecast.length > 0) {
+              weatherInfo += '\n未来几天天气：\n';
+              forecast.forEach(day => {
+                let dayInfo = '';
+                
+                // 日期
+                if (day.date) {
+                  dayInfo += day.date;
+                } else if (day.fxDate) {
+                  dayInfo += day.fxDate;
+                }
+                
+                // 天气描述
+                let dayWeather = day.weather || day.type || day.text || '';
+                if (dayWeather) {
+                  dayInfo += ` ${dayWeather}`;
+                }
+                
+                // 温度
+                let dayTemp = '';
+                if (day.temperature || day.temp) {
+                  dayTemp = day.temperature || day.temp;
+                } else if (day.high && day.low) {
+                  dayTemp = `${day.low}~${day.high}`;
+                } else if (day.tempMax && day.tempMin) {
+                  dayTemp = `${day.tempMin}~${day.tempMax}`;
+                }
+                
+                // 加上温度单位
+                if (dayTemp && !dayTemp.includes('°C') && !dayTemp.includes('℃')) {
+                  dayTemp += '℃';
+                }
+                
+                if (dayTemp) {
+                  dayInfo += ` ${dayTemp}`;
+                }
+                
+                weatherInfo += `· ${dayInfo}\n`;
+              });
+            }
+            
+            await sender.reply(weatherInfo);
+            sendSuccess = true;
+          } else {
+            // 提取常见字段显示，如果没有就显示整个对象
+            let formattedText = `📄 ${apiConfig.name || normalizedApiKey}：\n\n`;
+            const usefulKeys = ['title', 'name', 'content', 'message', 'description', 'text', 'url'];
+            let hasUsefulInfo = false;
+            
+            for (const key of usefulKeys) {
+              if (result.data[key] && typeof result.data[key] === 'string') {
+                formattedText += `${key}: ${result.data[key]}\n`;
+                hasUsefulInfo = true;
+              }
+            }
+            
+            // 如果没有提取到有用信息，使用格式化的JSON
+            if (!hasUsefulInfo) {
+              // 限制JSON长度
+              const json = JSON.stringify(result.data, null, 2);
+              formattedText = json.length > 2000 
+                ? "```json\n" + json.substring(0, 2000) + "\n...(内容太长已截断)\n```" 
+                : "```json\n" + json + "\n```";
+            }
+            
+            await sender.reply(formattedText);
+            sendSuccess = true;
+          }
+        } else {
+          // 字符串直接发送
+          await sender.reply(result.data.toString());
+          sendSuccess = true;
+        }
+      } catch (textErr) {
+        console.error(`[API工具箱] 发送文本消息失败: ${textErr.message}`);
+        // 降级处理，尝试简单文本方式发送
+        try {
+          const simpleText = typeof result.data === 'object' 
+            ? '数据太复杂，无法显示。请查看日志了解详情。' 
+            : result.data.toString().substring(0, 500) + (result.data.toString().length > 500 ? '...(已截断)' : '');
+          await sender.reply(simpleText);
+          sendSuccess = true;
+        } catch (fallbackErr) {
+          console.error(`[API工具箱] 降级发送也失败: ${fallbackErr.message}`);
+        }
+      }
+    }
+    // 处理图片类型
+    else if (result.type === 'image') {
+      try {
+        console.log(`[API工具箱] 尝试发送图片: ${result.data}`);
+        // 尝试使用多种方式发送图片
+        sendSuccess = await sendImageWithFallback(sender, result.data);
+      } catch (imgErr) {
+        console.error(`[API工具箱] 所有发送图片方式均失败: ${imgErr.message}，尝试发送链接`);
+        try {
+          await sender.reply(`🖼️ 图片链接: ${result.data}\n\n请复制链接查看图片`);
+          sendSuccess = true;
+        } catch (linkErr) {
+          console.error(`[API工具箱] 发送图片链接也失败: ${linkErr.message}`);
+        }
+      }
+    } 
+    // 处理视频类型
+    else if (result.type === 'video') {
+      try {
+        console.log(`[API工具箱] 尝试发送视频: ${result.data}`);
+        // 尝试使用多种方式发送视频
+        sendSuccess = await sendVideoWithFallback(sender, result.data);
+      } catch (videoErr) {
+        console.error(`[API工具箱] 所有发送视频方式均失败: ${videoErr.message}，尝试发送链接`);
+        try {
+          await sender.reply(`🎬 视频链接: ${result.data}\n\n请复制链接查看视频`);
+          sendSuccess = true;
+        } catch (linkErr) {
+          console.error(`[API工具箱] 发送视频链接也失败: ${linkErr.message}`);
+        }
+      }
+    }
+    // 其他未知类型
+    else {
+      try {
+        console.log(`[API工具箱] 未知类型(${result.type})，尝试作为文本发送: ${result.data}`);
+        await sender.reply(`API返回数据(${result.type}类型): ${result.data}`);
+        sendSuccess = true;
+      } catch (unknownErr) {
+        console.error(`[API工具箱] 发送未知类型数据失败: ${unknownErr.message}`);
+      }
+    }
+    
+    // 判断是否发送成功
+    if (sendSuccess) {
+      console.log(`[API工具箱] ${normalizedApiKey} 结果发送成功`);
+      return true;
+    } else {
+      console.error(`[API工具箱] 所有发送方式均失败`);
+      await sender.reply(`❌ 无法发送API结果，请报告管理员`);
+      return false;
+    }
+  
+  } catch (error) {
+    // 清除超时计时器
+    clearTimeout(timeoutId);
+    
+    console.error(`[API工具箱] 调用API出错: ${error.message}`);
+    
+    // 删除加载消息
+    try {
+      if (loadingMsg) {
+        await sender.delMsg(loadingMsg);
+      }
+    } catch (delErr) {
+      console.error(`[API工具箱] 删除加载消息失败: ${delErr.message}`);
+    }
+    
+    await sender.reply(`❌ 调用API出错: ${error.message}`);
+    return false;
+  }
+}
+
+// 生成API详细信息文本
   // 生成API详细信息文本
   function generateAPIInfoText(config, apiKey) {
     const apiConfig = config.apis[apiKey];

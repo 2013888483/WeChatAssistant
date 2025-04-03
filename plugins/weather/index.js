@@ -18,40 +18,28 @@ exports.meta = {
   author: "shuaijin"
 };
 
-// 加载主配置文件
-function loadGlobalConfig() {
-  try {
-    const configPath = path.join(__dirname, '../../config.json');
-    if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf8');
-      return JSON.parse(configContent);
-    }
-  } catch (error) {
-    console.error('[天气服务] 加载全局配置文件失败:', error.message);
-  }
-  return null;
-}
+// 添加标记，表明这是正确支持的导出格式
+exports.exportFormat = "object";
 
 // 插件默认配置
-exports.defaultConfig = (() => {
-  const globalConfig = loadGlobalConfig();
-  
-  // 如果成功读取了全局配置，使用其中的天气服务配置
-  if (globalConfig && globalConfig.pluginSettings && globalConfig.pluginSettings['weather']) {
-    console.log('[天气服务] 从全局配置文件加载配置');
-    return globalConfig.pluginSettings['weather'];
-  };
-})();
+exports.defaultConfig = {
+  enabled: true,
+  api: 'amap',
+  key: '',
+  defaultCity: '北京',
+  showAIAdvice: false
+};
+
+// 初始化config属性，以便在智能助手中直接使用
+exports.config = exports.defaultConfig;
 
 // 插件初始化方法
 exports.initialize = async function(core, pluginConfig) {
   // 存储core引用和配置
   this.core = core;
   
-  // 合并配置 - 如果pluginConfig为空，使用defaultConfig
-  this.config = pluginConfig && Object.keys(pluginConfig).length > 0 
-    ? pluginConfig 
-    : this.defaultConfig;
+  // 合并配置 - 使用传入的pluginConfig，因为它现在应来自Schema
+  this.config = pluginConfig || this.defaultConfig;
     
   // 验证配置
   if (!this.config.key) {
@@ -67,21 +55,21 @@ exports.initialize = async function(core, pluginConfig) {
   return true;
 };
 
-// 保存配置到全局配置文件
-async function saveConfigToGlobal(config) {
+// 保存配置
+async function saveConfig(config) {
   try {
-    const globalConfig = loadGlobalConfig();
-    if (globalConfig) {
-      if (!globalConfig.pluginSettings) {
-        globalConfig.pluginSettings = {};
-      }
-      globalConfig.pluginSettings['weather'] = config;
-      
-      const configPath = path.join(__dirname, '../../config.json');
-      fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2), 'utf8');
-      console.log('[天气服务] 已更新全局配置文件');
+    // 使用BNCR事件系统更新配置
+    if (config.core) {
+      await config.core.emit('config_updated', { 
+        pluginName: 'weather', 
+        config: config
+      });
+      console.log('[天气服务] 已通过事件系统更新配置');
       return true;
     }
+    
+    // 如果没有core引用，返回失败
+    console.warn('[天气服务] 未找到core引用，无法保存配置');
     return false;
   } catch (error) {
     console.error('[天气服务] 保存配置失败:', error);
@@ -141,19 +129,19 @@ exports.onMessage = async function(message) {
       // 更新配置
       if (['api', 'defaultCity', 'key'].includes(key)) {
         this.config[key] = value;
-        const saved = await saveConfigToGlobal(this.config);
+        const saved = await saveConfig(this);
         if (saved) {
           return `已更新配置: ${key} = ${key === 'key' ? '******' : value}`;
         } else {
-          return `配置已更新，但保存到全局配置失败: ${key} = ${key === 'key' ? '******' : value}`;
+          return `配置已更新，但保存失败: ${key} = ${key === 'key' ? '******' : value}`;
         }
       } else if (key === 'showAIAdvice') {
         this.config[key] = value.toLowerCase() === 'true';
-        const saved = await saveConfigToGlobal(this.config);
+        const saved = await saveConfig(this);
         if (saved) {
           return `已更新配置: ${key} = ${this.config[key]}`;
         } else {
-          return `配置已更新，但保存到全局配置失败: ${key} = ${this.config[key]}`;
+          return `配置已更新，但保存失败: ${key} = ${this.config[key]}`;
         }
       } else {
         return `无效的配置选项: ${key}\n可用选项: api, defaultCity, key, showAIAdvice`;
@@ -170,7 +158,9 @@ exports.onMessage = async function(message) {
 // 获取实时天气
 exports.getWeather = async function(city) {
   if (!this.config.key) {
-    throw new Error('API密钥未配置，请先配置API密钥');
+    // 使用测试模式，返回模拟数据
+    console.log('[天气服务] API密钥未配置，使用模拟数据');
+    return this.getMockWeather(city);
   }
   
   try {
@@ -187,6 +177,47 @@ exports.getWeather = async function(city) {
     console.error(`[天气服务] 获取天气失败: ${error.message}`);
     throw error;
   }
+};
+
+// 获取模拟天气数据
+exports.getMockWeather = function(city) {
+  const now = new Date();
+  const temp = Math.floor(Math.random() * 10) + 15; // 15-25度之间
+  const conditions = ['晴朗', '多云', '阴天', '小雨', '晴间多云'][Math.floor(Math.random() * 5)];
+  const wind = ['东北', '东南', '西北', '西南', '北', '南', '东', '西'][Math.floor(Math.random() * 8)];
+  const humidity = Math.floor(Math.random() * 30) + 40; // 40-70%之间
+  
+  // 生成未来几天的日期
+  const days = [];
+  for (let i = 0; i < 3; i++) {
+    const day = new Date(now);
+    day.setDate(now.getDate() + i);
+    days.push(day);
+  }
+  
+  let weatherInfo = `📍 ${city} 天气信息 (模拟数据)\n`;
+  weatherInfo += `🌡️ 当前温度: ${temp}°C\n`;
+  weatherInfo += `🌤️ 天气: ${conditions}\n`;
+  weatherInfo += `💨 风向: ${wind}风 ${Math.floor(Math.random() * 5) + 1}级\n`;
+  weatherInfo += `💧 湿度: ${humidity}%\n\n`;
+  
+  weatherInfo += `🔮 未来天气预报 (模拟数据):\n`;
+  
+  // 添加未来几天的天气预报
+  for (let i = 0; i < 3; i++) {
+    const date = days[i];
+    const dayOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
+    const formattedDate = `${date.getMonth() + 1}月${date.getDate()}日`;
+    const dayTemp = Math.floor(Math.random() * 10) + 20; // 20-30度之间
+    const nightTemp = dayTemp - Math.floor(Math.random() * 8) - 5; // 白天温度减5-13度
+    const weather = ['晴朗', '多云', '阴天', '小雨', '晴间多云'][Math.floor(Math.random() * 5)];
+    
+    weatherInfo += `${formattedDate} ${dayOfWeek}: ${weather} ${dayTemp}°C ~ ${nightTemp}°C\n`;
+  }
+  
+  weatherInfo += `\n⚠️ 注意: 这是模拟数据，API密钥未配置。请使用 /weconfig set weather.key 您的密钥 配置API密钥获取真实天气。\n`;
+  
+  return weatherInfo;
 };
 
 // 获取高德地图天气数据
@@ -366,9 +397,11 @@ exports.getOpenWeatherData = async function(city) {
 exports.getAIAdvice = async function(weatherData, forecastData) {
   try {
     // 获取AI聊天插件实例
-    const aiChatPlugin = this.core.plugins.get('ai-chat')?.instance;
+    const aiChatPlugin = this.core?.plugins?.get('ai-chat')?.instance;
     if (!aiChatPlugin) {
-      throw new Error('AI聊天插件未加载或不可用');
+      console.log('[天气服务] AI聊天插件未加载或不可用，使用本地生成建议');
+      // 如果AI聊天插件不可用，提供一个基于天气状况的简单建议
+      return generateLocalAdvice(weatherData, forecastData);
     }
     
     // 构建提示信息
@@ -384,9 +417,70 @@ exports.getAIAdvice = async function(weatherData, forecastData) {
     return advice;
   } catch (error) {
     console.error(`[天气服务] 获取AI生活建议失败:`, error);
-    return null;
+    // 出错时也使用本地生成的建议
+    return generateLocalAdvice(weatherData, forecastData);
   }
 };
+
+// 本地生成天气建议的函数
+function generateLocalAdvice(weatherData, forecastData) {
+  try {
+    const weather = weatherData.weather?.toLowerCase() || '';
+    const temp = parseFloat(weatherData.temperature) || 0;
+    
+    let clothingAdvice = '';
+    let travelAdvice = '';
+    let healthAdvice = '';
+    
+    // 根据温度给出穿衣建议
+    if (temp >= 30) {
+      clothingAdvice = '穿轻薄透气的衣物，注意防晒';
+    } else if (temp >= 25) {
+      clothingAdvice = '穿短袖短裤等夏季服装';
+    } else if (temp >= 20) {
+      clothingAdvice = '穿薄长袖或短袖';
+    } else if (temp >= 15) {
+      clothingAdvice = '穿长袖衬衫或薄外套';
+    } else if (temp >= 10) {
+      clothingAdvice = '穿外套或薄毛衣';
+    } else if (temp >= 5) {
+      clothingAdvice = '穿保暖外套、毛衣、围巾';
+    } else {
+      clothingAdvice = '穿厚外套、保暖内衣、手套、围巾等保暖装备';
+    }
+    
+    // 根据天气状况给出出行建议
+    if (weather.includes('雨')) {
+      travelAdvice = '记得带伞，最好穿防水鞋';
+    } else if (weather.includes('雪')) {
+      travelAdvice = '注意道路结冰，穿防滑鞋';
+    } else if (weather.includes('雾') || weather.includes('霾')) {
+      travelAdvice = '外出佩戴口罩，开车注意安全';
+    } else if (weather.includes('晴') && temp > 28) {
+      travelAdvice = '外出做好防晒措施，多补充水分';
+    } else if (weather.includes('多云')) {
+      travelAdvice = '天气较为舒适，适宜外出活动';
+    } else {
+      travelAdvice = '注意随时关注天气变化';
+    }
+    
+    // 健康建议
+    if (temp > 30) {
+      healthAdvice = '避免长时间户外活动，多喝水，防止中暑';
+    } else if (temp < 5) {
+      healthAdvice = '注意保暖，预防感冒';
+    } else if (weather.includes('雨') || weather.includes('雪')) {
+      healthAdvice = '保持室内空气流通，防止湿气';
+    } else {
+      healthAdvice = '适当户外运动，增强身体抵抗力';
+    }
+    
+    return `${clothingAdvice}；${travelAdvice}；${healthAdvice}。`;
+  } catch (e) {
+    console.error('[天气服务] 生成本地建议失败:', e);
+    return '今日穿着适当，出行注意安全，保持良好心情。';
+  }
+}
 
 // 方便其他插件调用的兼容API
 exports.getWeatherForecast = async function(city) {
@@ -398,4 +492,42 @@ exports.getWeatherForecast = async function(city) {
 exports.unload = async function() {
   console.log('[天气服务] 插件已卸载');
   return true;
+};
+
+// 处理天气命令
+exports.handleWeatherCommand = async function(city, sender) {
+  if (!city && this.config.defaultCity) {
+    city = this.config.defaultCity;
+  }
+  
+  if (!city) {
+    throw new Error('请指定城市名称，例如: /weather 北京');
+  }
+  
+  try {
+    console.log(`[天气服务] 处理天气查询命令，城市: ${city}`);
+    
+    // 检查配置是否存在，如果不存在则尝试从sender获取配置
+    if (!this.config.key) {
+      console.log('[天气服务] API密钥未配置，尝试从智能助手配置中读取');
+      
+      // 尝试从sender的额外配置中获取配置
+      const configFromSender = sender?.plugin?.config?.weather;
+      if (configFromSender && configFromSender.key) {
+        console.log('[天气服务] 从智能助手配置中获取到API密钥');
+        this.config.key = configFromSender.key;
+        this.config.api = configFromSender.api || this.config.api;
+        this.config.defaultCity = configFromSender.defaultCity || this.config.defaultCity;
+      }
+    }
+    
+    // 启用AI建议功能
+    this.config.showAIAdvice = true;
+    
+    const weatherData = await this.getWeather(city);
+    return weatherData;
+  } catch (error) {
+    console.error('[天气服务] 获取天气失败:', error);
+    throw error;
+  }
 }; 

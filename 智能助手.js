@@ -50,57 +50,91 @@ const CONFIG_FILE = path.join(__dirname, 'config.json');
 try {
   console.log('[智能助手] 检测到BNCR无界环境，尝试注册Schema配置');
   
+  // 先读取现有配置
+  let existingConfig = {};
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      existingConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      console.log('[智能助手] 成功读取现有配置文件');
+    }
+  } catch (error) {
+    console.error('[智能助手] 读取现有配置文件失败:', error);
+  }
+  
+  // 转换数组为字符串格式
+  if (Array.isArray(existingConfig.enabledPlugins)) {
+    existingConfig.enabledPlugins = existingConfig.enabledPlugins.join(',');
+  }
+  
+  if (Array.isArray(existingConfig.adminUsers)) {
+    existingConfig.adminUsers = existingConfig.adminUsers.join(',');
+  }
+  
   // 创建Schema配置
   const jsonSchema = BncrCreateSchema.object({
     enabledPlugins: BncrCreateSchema.string()
       .setTitle('启用的插件')
       .setDescription('选择要启用的插件，用逗号分隔，如: weather,ai-chat,morning-alert')
-      .setDefault('weather,ai-chat'),
+      .setDefault(existingConfig.enabledPlugins || 'weather,ai-chat'),
     
     // 天气插件配置
     weather: BncrCreateSchema.object({
       api: BncrCreateSchema.string()
         .setTitle('天气API')
         .setDescription('选择天气API提供商')
-        .setDefault('amap'),
+        .setDefault(existingConfig.weather?.api || 'amap'),
       key: BncrCreateSchema.string()
         .setTitle('API密钥')
         .setDescription('API提供商的密钥')
-        .setDefault(''),
+        .setDefault(existingConfig.weather?.key || ''),
       defaultCity: BncrCreateSchema.string()
         .setTitle('默认城市')
         .setDescription('默认查询的城市')
-        .setDefault('北京')
+        .setDefault(existingConfig.weather?.defaultCity || '北京')
     }).setTitle('天气插件设置'),
     
     // AI聊天插件配置
     'ai-chat': BncrCreateSchema.object({
       defaultModel: BncrCreateSchema.string()
         .setTitle('默认模型')
-        .setDescription('默认使用的AI模型')
-        .setDefault('deepseekchat'),
+        .setDescription('默认使用的AI模型名称，必须与下方"模型配置"中的模型名称完全一致，如：deepseek、openai或siliconflow')
+        .setDefault(existingConfig['ai-chat']?.defaultModel || 'deepseek'),
       models: BncrCreateSchema.object({
         openai: BncrCreateSchema.object({
           apiKey: BncrCreateSchema.string()
             .setTitle('API密钥')
             .setDescription('OpenAI的API密钥')
-            .setDefault(''),
+            .setDefault(existingConfig['ai-chat']?.models?.openai?.apiKey || ''),
           enabled: BncrCreateSchema.boolean()
             .setTitle('启用状态')
             .setDescription('是否启用此模型')
-            .setDefault(false)
+            .setDefault(existingConfig['ai-chat']?.models?.openai?.enabled || false)
         }).setTitle('OpenAI配置'),
         deepseek: BncrCreateSchema.object({
           apiKey: BncrCreateSchema.string()
             .setTitle('API密钥')
             .setDescription('DeepSeek的API密钥')
-            .setDefault(''),
+            .setDefault(existingConfig['ai-chat']?.models?.deepseek?.apiKey || ''),
           enabled: BncrCreateSchema.boolean()
             .setTitle('启用状态')
             .setDescription('是否启用此模型')
-            .setDefault(true)
-        }).setTitle('DeepSeek配置')
-      }).setTitle('模型配置')
+            .setDefault(existingConfig['ai-chat']?.models?.deepseek?.enabled || true)
+        }).setTitle('DeepSeek配置'),
+        siliconflow: BncrCreateSchema.object({
+          apiKey: BncrCreateSchema.string()
+            .setTitle('API密钥')
+            .setDescription('硅基流动的API密钥')
+            .setDefault(existingConfig['ai-chat']?.models?.siliconflow?.apiKey || ''),
+          model: BncrCreateSchema.string()
+            .setTitle('模型名称')
+            .setDescription('指定具体的模型版本，如：deepseek-ai/DeepSeek-V3')
+            .setDefault(existingConfig['ai-chat']?.models?.siliconflow?.model || 'deepseek-ai/DeepSeek-V3'),
+          enabled: BncrCreateSchema.boolean()
+            .setTitle('启用状态')
+            .setDescription('是否启用此模型')
+            .setDefault(existingConfig['ai-chat']?.models?.siliconflow?.enabled || false)
+        }).setTitle('硅基流动配置')
+      }).setTitle('模型配置（如需使用其他模型，请到config.js中配置）')
     }).setTitle('AI聊天插件设置'),
     
     // 每日提醒插件配置
@@ -108,11 +142,11 @@ try {
       enabled: BncrCreateSchema.boolean()
         .setTitle('是否启用')
         .setDescription('是否启用每日提醒')
-        .setDefault(false),
+        .setDefault(existingConfig['morning-alert']?.enabled || false),
       time: BncrCreateSchema.string()
         .setTitle('提醒时间')
         .setDescription('每日提醒的时间，格式为HH:MM')
-        .setDefault('07:00')
+        .setDefault(existingConfig['morning-alert']?.time || '07:00')
     }).setTitle('每日提醒插件设置'),
     
     // AI模型测速插件
@@ -120,17 +154,17 @@ try {
       enabled: BncrCreateSchema.boolean()
         .setTitle('是否启用')
         .setDescription('是否启用AI模型测速')
-        .setDefault(true),
+        .setDefault(existingConfig['ai-speedtest']?.enabled || true),
       interval: BncrCreateSchema.number()
         .setTitle('测试间隔')
         .setDescription('自动测试的间隔（分钟）')
-        .setDefault(60)
+        .setDefault(existingConfig['ai-speedtest']?.interval || 60)
     }).setTitle('AI模型测速插件'),
     
     adminUsers: BncrCreateSchema.string()
       .setTitle('管理员用户')
       .setDescription('管理员用户ID列表，用逗号分隔，如: 12345,67890')
-      .setDefault('')
+      .setDefault(existingConfig.adminUsers || '')
   }).setTitle('微信智能助手配置');
 
   // 创建配置管理器

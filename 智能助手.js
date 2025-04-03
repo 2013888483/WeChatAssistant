@@ -52,10 +52,10 @@ try {
   
   // 创建Schema配置
   const jsonSchema = BncrCreateSchema.object({
-    enabledPlugins: BncrCreateSchema.array()
+    enabledPlugins: BncrCreateSchema.string()
       .setTitle('启用的插件')
-      .setDescription('选择要启用的插件')
-      .setDefault([]),
+      .setDescription('选择要启用的插件，用逗号分隔，如: weather,ai-chat,morning-alert')
+      .setDefault('weather,ai-chat'),
     
     // 天气插件配置
     weather: BncrCreateSchema.object({
@@ -127,10 +127,10 @@ try {
         .setDefault(60)
     }).setTitle('AI模型测速插件'),
     
-    adminUsers: BncrCreateSchema.array()
+    adminUsers: BncrCreateSchema.string()
       .setTitle('管理员用户')
-      .setDescription('管理员用户ID列表')
-      .setDefault([])
+      .setDescription('管理员用户ID列表，用逗号分隔，如: 12345,67890')
+      .setDefault('')
   }).setTitle('微信智能助手配置');
 
   // 创建配置管理器
@@ -139,7 +139,23 @@ try {
   // 配置更新后保存到文件
   function onConfigUpdate(config) {
     try {
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+      // 转换配置格式，确保正确处理数组
+      const configToSave = JSON.parse(JSON.stringify(config));
+      
+      // 将字符串格式的列表转换为数组(内部使用)
+      if (typeof configToSave.enabledPlugins === 'string' && configToSave.enabledPlugins.trim() !== '') {
+        configToSave.enabledPlugins = configToSave.enabledPlugins.split(',').filter(item => item.trim() !== '');
+      } else if (!Array.isArray(configToSave.enabledPlugins)) {
+        configToSave.enabledPlugins = [];
+      }
+      
+      if (typeof configToSave.adminUsers === 'string' && configToSave.adminUsers.trim() !== '') {
+        configToSave.adminUsers = configToSave.adminUsers.split(',').filter(item => item.trim() !== '');
+      } else if (!Array.isArray(configToSave.adminUsers)) {
+        configToSave.adminUsers = [];
+      }
+      
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
       console.log('[智能助手] 配置更新已保存到文件');
     } catch (error) {
       console.error('[智能助手] 保存配置到文件失败:', error);
@@ -159,7 +175,22 @@ function readConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const configData = fs.readFileSync(CONFIG_FILE, 'utf8');
-      return JSON.parse(configData);
+      const config = JSON.parse(configData);
+      
+      // 处理字符串格式的插件列表和管理员列表
+      if (typeof config.enabledPlugins === 'string') {
+        config.enabledPlugins = config.enabledPlugins.split(',').filter(item => item.trim() !== '');
+      } else if (!Array.isArray(config.enabledPlugins)) {
+        config.enabledPlugins = [];
+      }
+      
+      if (typeof config.adminUsers === 'string') {
+        config.adminUsers = config.adminUsers.split(',').filter(item => item.trim() !== '');
+      } else if (!Array.isArray(config.adminUsers)) {
+        config.adminUsers = [];
+      }
+      
+      return config;
     }
   } catch (error) {
     console.error('[智能助手] 读取配置文件失败:', error);
@@ -176,7 +207,19 @@ function readConfig() {
 // 保存配置
 function saveConfig(config) {
   try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+    // 确保config是深拷贝，不影响原始数据
+    const configToSave = JSON.parse(JSON.stringify(config));
+    
+    // 如果界面配置使用字符串格式，转换为字符串存储
+    if (Array.isArray(configToSave.enabledPlugins)) {
+      configToSave.enabledPlugins = configToSave.enabledPlugins.join(',');
+    }
+    
+    if (Array.isArray(configToSave.adminUsers)) {
+      configToSave.adminUsers = configToSave.adminUsers.join(',');
+    }
+    
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
     return true;
   } catch (error) {
     console.error('[智能助手] 保存配置文件失败:', error);
